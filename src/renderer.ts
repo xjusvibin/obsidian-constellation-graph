@@ -39,6 +39,13 @@ void main() {
 const FOV = 55;
 const CORE = 0.34; // fraction of a point sprite that is the solid disc
 
+// A press on a note is a click unless it clearly becomes a drag. Quick taps with a shaky hand stay clicks.
+const DRAG_FAR_PX = 10;       // moving this far is always a drag
+const DRAG_HOLD_MS = 200;     // held at least this long ...
+const DRAG_HELD_PX = 3;       // ... a movement this small already starts the drag
+const DOUBLE_CLICK_MS = 450;  // two clicks this close together open the note
+const PRESS_SLACK_PX = 7;     // extra reach when pressing, because notes keep drifting on screen
+
 function baseRadius(deg: number): number {
   return Math.min(5.5, 0.9 + Math.sqrt(deg) * 0.5);
 }
@@ -115,7 +122,8 @@ export class ConstellationRenderer implements GraphRenderer {
   private resumeTimer = 0;
   private slow = 0;
   private pointer = { x: -1, y: -1, inside: false, moved: false };
-  private down = { x: 0, y: 0 };
+  private press: { i: number; x: number; y: number; t: number; id: number } | null = null; // the button is down; i is the note under it (-1 for none)
+  private lastClick: { i: number; t: number } | null = null;
   private drag: { i: number; plane: THREE.Plane; offset: THREE.Vector3; moved: boolean; pointerId: number } | null = null;
   private ray = new THREE.Raycaster();
   private hit = new THREE.Vector3();
@@ -173,7 +181,6 @@ export class ConstellationRenderer implements GraphRenderer {
     this.canvas.addEventListener("pointerdown", this.onPointerDown, true); // capture: claim a drag before the orbit controls do
     this.canvas.addEventListener("pointercancel", this.onPointerCancel);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("dblclick", this.onDblClick);
     this.canvas.addEventListener("webglcontextlost", this.onContextLost);
     this.canvas.addEventListener("webglcontextrestored", this.onContextRestored);
 
@@ -369,7 +376,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.controls.dispose();
     for (const [ev, fn] of [
       ["pointermove", this.onPointerMove], ["pointerleave", this.onPointerLeave], ["pointercancel", this.onPointerCancel],
-      ["pointerup", this.onPointerUp], ["dblclick", this.onDblClick],
+      ["pointerup", this.onPointerUp],
       ["webglcontextlost", this.onContextLost], ["webglcontextrestored", this.onContextRestored],
     ] as [string, EventListener][]) this.canvas.removeEventListener(ev, fn);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown, true);
@@ -469,48 +476,73 @@ export class ConstellationRenderer implements GraphRenderer {
   }
   private onPointerMove = (e: PointerEvent) => {
     this.setPointer(e); this.pointer.moved = true;
-    if (this.drag) this.dragMove(e);
+    if (this.drag) { this.dragMove(e); return; }
+    // a press on a note only turns into a drag once the pointer has clearly left: far, or held a moment and then moved
+    const p = this.press;
+    if (p && p.i >= 0) {
+      const dist = Math.hypot(e.clientX - p.x, e.clientY - p.y), held = performance.now() - p.t;
+      if (dist >= DRAG_FAR_PX || (held >= DRAG_HOLD_MS && dist >= DRAG_HELD_PX)) this.dragStart(e, p.i);
+    }
   };
   private onPointerLeave = () => { this.pointer.inside = false; this.pointer.moved = true; };
   private onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
-    this.down.x = e.clientX; this.down.y = e.clientY;
-    this.setPointer(e); this.setHover(this.pick()); // touch taps never fire a move first
-    if (this.hover >= 0) this.dragStart(e, this.hover);
+    this.setPointer(e);
+    let hit = this.pick();
+    if (hit < 0) hit = this.pick(PRESS_SLACK_PX); // notes drift while the hand travels, so a press may land just beside one
+    this.setHover(hit); // touch taps never fire a move first
+    this.press = { i: this.hover, x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    if (this.hover >= 0 && !this.nova) {
+      this.controls.enabled = false; // otherwise the orbit controls start turning the camera under a click
+      try { this.canvas.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
+    }
   };
   private onPointerUp = (e: PointerEvent) => {
     if (e.button !== 0) return;
-    const wasDrag = this.drag?.moved ?? false;
-    if (this.drag) this.dragEnd();
-    if (wasDrag || Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) return; // it was a drag, not a click
-    this.setPointer(e); this.setHover(this.pick()); // the node may have drifted since the last move
-    if (this.hover >= 0) {
-      if (e.ctrlKey || e.metaKey) this.cb.onOpen(this.hover, true);
-      else { this.setSelected(this.hover); this.cb.onSelect(this.hover); }
-    } else if (this.selected >= 0) { this.setSelected(-1); this.cb.onSelect(-1); }
+    const p = this.press; this.press = null;
+    if (this.drag) { this.dragEnd(); return; }
+    this.endPress(p);
+    if (!p) return;
+    // Not a drag, so it is a click. It belongs to the note that was pressed, even if that note drifted a little
+    // or the hand shook: nothing is re-aimed at release.
+    const now = performance.now(), last = this.lastClick;
+    if (last && last.i >= 0 && now - last.t < DOUBLE_CLICK_MS && (p.i === last.i || p.i < 0)) { // second click of a double-click
+      this.lastClick = null; this.cb.onOpen(last.i, false); return;
+    }
+    if (p.i >= 0) {
+      if (e.ctrlKey || e.metaKey) this.cb.onOpen(p.i, true);
+      else { this.lastClick = { i: p.i, t: now }; this.setSelected(p.i); this.cb.onSelect(p.i); }
+    } else if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= 6 && this.selected >= 0) { // a click on empty space, not an orbit
+      this.lastClick = null; this.setSelected(-1); this.cb.onSelect(-1);
+    }
   };
-  private onPointerCancel = () => { if (this.drag) this.dragEnd(); };
+  private onPointerCancel = () => {
+    const p = this.press; this.press = null;
+    if (this.drag) this.dragEnd(); else this.endPress(p);
+  };
 
-  /** Grab a note: the orbit controls stand down, and the note follows the pointer on a plane facing the camera. */
+  private endPress(p: { id: number } | null): void {
+    this.controls.enabled = true;
+    if (p) { try { this.canvas.releasePointerCapture(p.id); } catch { /* already released */ } }
+  }
+
+  /** The press has become a drag: now the layout is switched into drag mode and the note follows the pointer on a plane facing the camera. */
   private dragStart(e: PointerEvent, i: number): void {
     const n = this.sim.nodes[i]; if (!n || this.nova) return;
     const normal = this.camera.getWorldDirection(this.tmp2.set(0, 0, 0)).clone();
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(n.x, n.y, n.z));
-    this.drag = { i, plane, offset: new THREE.Vector3(), moved: false, pointerId: e.pointerId };
-    this.controls.enabled = false; // OrbitControls checks this before it starts a gesture
+    this.drag = { i, plane, offset: new THREE.Vector3(), moved: true, pointerId: e.pointerId };
     const at = this.pointerOnPlane(e, plane);
     if (at) this.drag.offset.set(n.x - at.x, n.y - at.y, n.z - at.z); // so the note does not jump to the cursor
-    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
     this.userActive = true; this.autoFrame = false;
     window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null;
     this.sim.beginDrag(i);
     this.canvas.setCssProps({ cursor: "grabbing" });
+    this.dragMove(e);
   }
 
   private dragMove(e: PointerEvent): void {
     const d = this.drag; if (!d) return;
-    if (!d.moved && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) < 4) return; // still a click
-    d.moved = true;
     const at = this.pointerOnPlane(e, d.plane); if (!at) return;
     this.sim.dragTo(at.x + d.offset.x, at.y + d.offset.y, at.z + d.offset.z);
     this.stale = true;
@@ -519,8 +551,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private dragEnd(): void {
     const d = this.drag; if (!d) return;
     this.drag = null;
-    this.controls.enabled = true;
-    try { this.canvas.releasePointerCapture(d.pointerId); } catch { /* already released */ }
+    this.endPress({ id: d.pointerId });
     this.sim.endDrag(this.still); // with reduced motion the notes return at once instead of bouncing
     this.userActive = false; this.stale = true;
     this.canvas.style.cursor = this.hover >= 0 ? "pointer" : "grab";
@@ -532,9 +563,8 @@ export class ConstellationRenderer implements GraphRenderer {
     this.ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
     return this.ray.ray.intersectPlane(plane, this.hit) ? this.hit : null;
   }
-  private onDblClick = () => { if (this.hover >= 0) this.cb.onOpen(this.hover, false); };
-
-  private pick(): number {
+  /** The note under the pointer. `slack` widens every target by a few pixels (used for a press, since notes drift while the hand travels). */
+  private pick(slack = 0): number {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight, dpr = this.renderer.getPixelRatio();
     const v = this.tmp, nodes = this.sim.nodes;
     let best = -1, bestScore = 1e9;
@@ -545,10 +575,10 @@ export class ConstellationRenderer implements GraphRenderer {
       if (v.z > 1) continue;
       const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
       const d = Math.hypot(sx - this.pointer.x, sy - this.pointer.y);
-      if (d > 60) continue;
+      if (d > 70) continue;
       const dist = this.camera.position.distanceTo(this.tmp2.set(p.x, p.y, p.z)) || 1;
       const sprite = Math.min(190, Math.max(7, (this.size[i] * this.uniforms.uScale.value) / dist)) / dpr; // CSS pixels
-      const reach = Math.max(10, sprite * CORE * 0.5 + 6);
+      const reach = Math.max(14, sprite * CORE * 0.5 + 8) + slack;
       if (d < reach) { const score = d + dist * 0.01; if (score < bestScore) { bestScore = score; best = i; } }
     }
     return best;
