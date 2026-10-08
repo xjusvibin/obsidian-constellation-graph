@@ -1,0 +1,7 @@
+node_modules/
+main.js
+*.map
+dev/harness.html
+dev/mock-data.json
+data.json
+.DS_Store

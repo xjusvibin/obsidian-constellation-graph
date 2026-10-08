@@ -1,0 +1,131 @@
+/* Constellation Graph. Everything is scoped to .cg-root and uses Obsidian's variables with fallbacks. */
+
+.cg-view { padding: 0 !important; overflow: hidden; }
+
+.cg-root {
+  --cg-bg: #05070c;
+  --cg-panel: rgba(12, 15, 24, 0.82);
+  --cg-border: rgba(255, 255, 255, 0.14);
+  --cg-ink: #eef1f8;
+  --cg-dim: #9aa3b8;
+  --cg-accent: var(--interactive-accent, #7c5cff);
+  --cg-label-size: 13px;
+  position: relative; width: 100%; height: 100%; overflow: hidden; container-type: size;
+  background: var(--cg-bg); color: var(--cg-ink);
+  font-family: var(--font-interface, system-ui, sans-serif); font-size: 13px; line-height: 1.4;
+}
+
+.cg-stage { position: absolute; inset: 0; outline: none; }
+.cg-stage:focus-visible { box-shadow: inset 0 0 0 2px var(--cg-accent); }
+.cg-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.cg-canvas:active { cursor: grabbing; }
+.cg-vignette { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 46%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.6) 100%); }
+.cg-contrast .cg-vignette { display: none; }
+
+/* labels drawn over the canvas */
+.cg-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.cg-label {
+  position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform, opacity;
+  font-size: var(--cg-label-size); font-weight: 500; color: #fff; letter-spacing: 0.01em;
+  text-shadow: 0 0 6px #000, 0 0 3px #000, 0 1px 2px #000;
+}
+.cg-label-strong { font-weight: 700; }
+.cg-contrast .cg-label { font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #000; border: 1px solid #fff; text-shadow: none; }
+
+/* toolbar */
+.cg-top { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+.cg-search {
+  width: 210px; height: 30px; padding: 0 10px; border-radius: 8px; color: var(--cg-ink);
+  background: var(--cg-panel); border: 1px solid var(--cg-border); backdrop-filter: blur(6px);
+}
+.cg-search::placeholder { color: var(--cg-dim); }
+.cg-btn {
+  width: 30px; height: 30px; padding: 0; display: grid; place-items: center; cursor: pointer; font-size: 14px;
+  color: var(--cg-ink); background: var(--cg-panel); border: 1px solid var(--cg-border); border-radius: 8px; box-shadow: none;
+}
+.cg-btn:hover { border-color: rgba(255, 255, 255, 0.4); }
+.cg-search:focus-visible, .cg-btn:focus-visible, .cg-legend-btn:focus-visible, .cg-list-btn:focus-visible,
+.cg-chip:focus-visible, .cg-primary:focus-visible, .cg-secondary:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
+
+.cg-stats { position: absolute; top: 18px; right: 14px; color: var(--cg-dim); font-size: 12px; pointer-events: none; z-index: 2; }
+.cg-motion-note { position: absolute; top: 38px; right: 14px; color: var(--cg-dim); font-size: 11px; pointer-events: none; z-index: 2; }
+
+/* legend */
+.cg-legend { position: absolute; left: 12px; bottom: 12px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; z-index: 3; max-height: 60%; overflow: auto; }
+.cg-legend-btn {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 9px 3px 6px; cursor: pointer; text-align: left;
+  color: var(--cg-ink); background: var(--cg-panel); border: 1px solid transparent; border-radius: 7px; font-size: 12px; box-shadow: none; height: auto;
+}
+.cg-legend-btn:hover { border-color: var(--cg-border); }
+.cg-legend-btn.cg-off { opacity: 0.4; text-decoration: line-through; }
+.cg-legend-count { margin-left: auto; padding-left: 10px; color: var(--cg-dim); font-variant-numeric: tabular-nums; }
+.cg-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.cg-contrast .cg-dot { box-shadow: 0 0 0 2px #fff; }
+
+/* selected-note panel */
+.cg-detail {
+  position: absolute; right: 12px; bottom: 12px; width: 280px; max-height: 55%; overflow: auto; padding: 12px 14px; z-index: 4;
+  background: var(--cg-panel); border: 1px solid var(--cg-border); border-radius: 10px; backdrop-filter: blur(8px);
+}
+.cg-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.cg-detail-title:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 3px; }
+.cg-detail-title { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.25; color: var(--cg-ink); }
+.cg-close { flex: none; width: 24px; height: 24px; font-size: 16px; }
+.cg-detail-meta { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; color: var(--cg-dim); font-size: 12px; }
+.cg-detail-actions { display: flex; gap: 6px; margin-bottom: 10px; }
+.cg-primary, .cg-secondary { height: 28px; padding: 0 12px; border-radius: 7px; cursor: pointer; font-size: 12px; box-shadow: none; }
+.cg-primary { color: #fff; background: var(--cg-accent); border: 1px solid transparent; }
+.cg-secondary { color: var(--cg-ink); background: transparent; border: 1px solid var(--cg-border); }
+.cg-detail-sub { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cg-dim); }
+.cg-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.cg-chip { height: auto; padding: 2px 8px; font-size: 12px; cursor: pointer; color: var(--cg-ink); background: rgba(255, 255, 255, 0.07); border: 1px solid var(--cg-border); border-radius: 999px; box-shadow: none; }
+.cg-chip:hover { background: rgba(255, 255, 255, 0.16); }
+.cg-more { margin: 6px 0 0; color: var(--cg-dim); font-size: 12px; }
+
+/* note list */
+.cg-list {
+  position: absolute; left: 12px; top: 52px; bottom: 12px; width: 260px; padding: 6px; z-index: 5; overflow: auto;
+  background: var(--cg-panel); border: 1px solid var(--cg-border); border-radius: 10px; backdrop-filter: blur(8px);
+}
+.cg-list[hidden], .cg-detail[hidden], .cg-help[hidden], .cg-tip[hidden] { display: none; }
+.cg-list-body { margin: 0; padding: 0; list-style: none; }
+.cg-list-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; cursor: pointer; text-align: left; color: var(--cg-ink); background: transparent; border: 0; border-radius: 6px; box-shadow: none; height: auto; }
+.cg-list-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.cg-list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-list-deg { margin-left: auto; color: var(--cg-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+.cg-list-empty { padding: 8px; color: var(--cg-dim); }
+
+/* hover tip, help, screen-reader text */
+.cg-tip { position: absolute; z-index: 6; display: flex; flex-direction: column; padding: 5px 9px; border-radius: 7px; pointer-events: none; font-size: 12px;
+  background: rgba(8, 10, 16, 0.92); border: 1px solid var(--cg-border); }
+.cg-tip span { color: var(--cg-dim); }
+.cg-help { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(460px, 90%); padding: 10px 14px; z-index: 7;
+  background: rgba(8, 10, 16, 0.96); border: 1px solid var(--cg-border); border-radius: 10px; }
+.cg-help p { margin: 3px 0; }
+.cg-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.cg-contrast { --cg-panel: #000; --cg-border: #fff; --cg-dim: #e6e6e6; }
+
+/* panes can be narrow even on a wide screen, so respond to the pane, not the window */
+@container (max-width: 640px) {
+  .cg-search { width: 120px; }
+  .cg-stats { top: 52px; left: 14px; right: auto; }
+  .cg-motion-note { top: 70px; left: 14px; right: auto; }
+  .cg-detail { width: calc(100% - 24px); }
+  .cg-list { width: calc(100% - 24px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-root * { transition: none !important; animation: none !important; }
+}
+
+/* shown instead of the 3D view when WebGL is unavailable */
+.cg-notice { position: absolute; left: 50%; top: 55%; transform: translateX(-50%); width: min(420px, 86%); padding: 12px 16px; text-align: center;
+  color: var(--cg-ink); background: var(--cg-panel); border: 1px solid var(--cg-border); border-radius: 10px; z-index: 2; }
+/* the one soft flash of the supernova; the plugin never strobes and skips this under reduced motion */
+.cg-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 1;
+  background: radial-gradient(ellipse at 50% 48%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 238, 190, 0.55) 28%, rgba(255, 200, 120, 0) 70%); }
+.cg-contrast .cg-flash { display: none; }
+.cg-btn.cg-on, .cg-btn[aria-pressed="true"] { background: var(--cg-accent); border-color: transparent; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .cg-flash { display: none; } }
