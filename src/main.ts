@@ -17,6 +17,8 @@ export default class ConstellationPlugin extends Plugin {
     this.addRibbonIcon("orbit", "Open constellation graph", () => void this.activate());
     this.addCommand({ id: "open", name: "Open constellation graph", callback: () => void this.activate() });
     this.addSettingTab(new ConstellationSettingTab(this.app, this));
+    // wait until the workspace has been restored, otherwise the saved layout would open over it
+    this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) void this.activate(); });
   }
 
   onunload(): void {

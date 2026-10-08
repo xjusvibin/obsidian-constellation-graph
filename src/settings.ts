@@ -18,6 +18,7 @@ export interface ConstellationSettings {
   respectReducedMotion: boolean;
   highlightActive: boolean;
   excludeFolders: string;
+  openOnStartup: boolean;
 }
 
 export const DEFAULT_SETTINGS: ConstellationSettings = {
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   respectReducedMotion: true,
   highlightActive: true,
   excludeFolders: "",
+  openOnStartup: false,
 };
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number =>
@@ -64,6 +66,7 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     respectReducedMotion: bool(r.respectReducedMotion, d.respectReducedMotion),
     highlightActive: bool(r.highlightActive, d.highlightActive),
     excludeFolders: typeof r.excludeFolders === "string" ? r.excludeFolders : d.excludeFolders,
+    openOnStartup: bool(r.openOnStartup, d.openOnStartup),
   };
 }
 

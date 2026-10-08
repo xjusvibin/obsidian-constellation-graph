@@ -11,6 +11,10 @@ export class ConstellationSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     const set = (patch: Partial<ConstellationSettings>, rebuild = false) => this.plugin.update(patch, rebuild);
 
+    new Setting(containerEl).setName("Open on startup")
+      .setDesc("Show the constellation graph as soon as Obsidian starts. It is saved with the vault, so anyone who opens this vault sees it first.")
+      .addToggle(t => t.setValue(s.openOnStartup).onChange(v => set({ openOnStartup: v })));
+
     new Setting(containerEl).setName("Motion").setHeading();
     new Setting(containerEl).setName("Flow")
       .setDesc("How much the notes drift and orbit. Off lets the layout settle and stay still.")
