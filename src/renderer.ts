@@ -180,6 +180,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.canvas.addEventListener("pointerleave", this.onPointerLeave);
     this.canvas.addEventListener("pointerdown", this.onPointerDown, true); // capture: claim a drag before the orbit controls do
     this.canvas.addEventListener("pointercancel", this.onPointerCancel);
+    this.canvas.addEventListener("lostpointercapture", this.onPointerCancel);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("webglcontextlost", this.onContextLost);
     this.canvas.addEventListener("webglcontextrestored", this.onContextRestored);
@@ -375,7 +376,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.controls.removeEventListener("end", this.onControlEnd);
     this.controls.dispose();
     for (const [ev, fn] of [
-      ["pointermove", this.onPointerMove], ["pointerleave", this.onPointerLeave], ["pointercancel", this.onPointerCancel],
+      ["pointermove", this.onPointerMove], ["pointerleave", this.onPointerLeave], ["pointercancel", this.onPointerCancel], ["lostpointercapture", this.onPointerCancel],
       ["pointerup", this.onPointerUp],
       ["webglcontextlost", this.onContextLost], ["webglcontextrestored", this.onContextRestored],
     ] as [string, EventListener][]) this.canvas.removeEventListener(ev, fn);
@@ -476,6 +477,8 @@ export class ConstellationRenderer implements GraphRenderer {
   }
   private onPointerMove = (e: PointerEvent) => {
     this.setPointer(e); this.pointer.moved = true;
+    // the button went up without us seeing it (focus moved away, released outside the window): do not stay stuck in a drag
+    if ((this.press || this.drag) && e.buttons === 0) { this.onPointerCancel(); return; }
     if (this.drag) { this.dragMove(e); return; }
     // a press on a note only turns into a drag once the pointer has clearly left: far, or held a moment and then moved
     const p = this.press;
@@ -532,8 +535,9 @@ export class ConstellationRenderer implements GraphRenderer {
     const normal = this.camera.getWorldDirection(this.tmp2.set(0, 0, 0)).clone();
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(n.x, n.y, n.z));
     this.drag = { i, plane, offset: new THREE.Vector3(), moved: true, pointerId: e.pointerId };
-    const at = this.pointerOnPlane(e, plane);
-    if (at) this.drag.offset.set(n.x - at.x, n.y - at.y, n.z - at.z); // so the note does not jump to the cursor
+    // anchor to where the button went down, not to where the pointer is now, so the note stays under the cursor
+    const at = this.pointerOnPlane(this.press?.x ?? e.clientX, this.press?.y ?? e.clientY, plane);
+    if (at) this.drag.offset.set(n.x - at.x, n.y - at.y, n.z - at.z);
     this.userActive = true; this.autoFrame = false;
     window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null;
     this.sim.beginDrag(i);
@@ -543,7 +547,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   private dragMove(e: PointerEvent): void {
     const d = this.drag; if (!d) return;
-    const at = this.pointerOnPlane(e, d.plane); if (!at) return;
+    const at = this.pointerOnPlane(e.clientX, e.clientY, d.plane); if (!at) return;
     this.sim.dragTo(at.x + d.offset.x, at.y + d.offset.y, at.z + d.offset.z);
     this.stale = true;
   }
@@ -558,9 +562,9 @@ export class ConstellationRenderer implements GraphRenderer {
     this.onControlEnd();
   }
 
-  private pointerOnPlane(e: PointerEvent, plane: THREE.Plane): THREE.Vector3 | null {
+  private pointerOnPlane(clientX: number, clientY: number, plane: THREE.Plane): THREE.Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
-    this.ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    this.ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.camera);
     return this.ray.ray.intersectPlane(plane, this.hit) ? this.hit : null;
   }
   /** The note under the pointer. `slack` widens every target by a few pixels (used for a press, since notes drift while the hand travels). */

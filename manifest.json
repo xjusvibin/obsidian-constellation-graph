@@ -1,7 +1,7 @@
 {
   "id": "constellation-graph",
   "name": "Constellation Graph",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "minAppVersion": "1.7.2",
   "description": "A fluid, orbiting 3D constellation of your notes, coloured by folder, with keyboard and screen-reader support.",
   "author": "JusVibin",
