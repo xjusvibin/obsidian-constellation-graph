@@ -2,7 +2,7 @@
 
 A fluid, slowly orbiting 3D map of your notes for [Obsidian](https://obsidian.md). Notes glow as points of light, coloured by folder (or tag). Clusters swirl around their own centres and drift past one another, like a screensaver for your vault, while the camera slowly circles. Everything is built to stay usable: full keyboard control, screen-reader announcements, a searchable note list, a colour-blind-safe palette, a high-contrast mode, and no motion at all if your system asks for reduced motion.
 
-> Status: pre-release (0.1.0). Not yet in the community plugin directory.
+> Early release. Listing and install details: [Constellation Graph on the Obsidian community site](https://community.obsidian.md/plugins/constellation-graph).
 
 ## Use
 
