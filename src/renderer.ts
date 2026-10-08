@@ -45,7 +45,7 @@ function baseRadius(deg: number): number {
 
 export function webglAvailable(): boolean {
   try {
-    const c = document.createElement("canvas");
+    const c = createEl("canvas");
     return !!(c.getContext("webgl2") || c.getContext("webgl"));
   } catch { return false; }
 }
@@ -145,15 +145,9 @@ export class ConstellationRenderer implements GraphRenderer {
     this.canvas.setAttribute("aria-hidden", "true");
     container.appendChild(this.canvas);
 
-    this.flashEl = document.createElement("div");
-    this.flashEl.className = "cg-flash";
-    this.flashEl.setAttribute("aria-hidden", "true");
-    container.appendChild(this.flashEl);
+    this.flashEl = container.createDiv({ cls: "cg-flash", attr: { "aria-hidden": "true" } });
 
-    this.labelLayer = document.createElement("div");
-    this.labelLayer.className = "cg-labels";
-    this.labelLayer.setAttribute("aria-hidden", "true");
-    container.appendChild(this.labelLayer);
+    this.labelLayer = container.createDiv({ cls: "cg-labels", attr: { "aria-hidden": "true" } });
 
     this.camera.position.set(260, 150, 560);
     this.controls = new OrbitControls(this.camera, this.canvas);
@@ -189,7 +183,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.io.observe(container);
     this.resize();
     this.applySettings(settings);
-    this.raf = requestAnimationFrame(this.frame);
+    this.raf = window.requestAnimationFrame(this.frame);
   }
 
   // ----------------------------------------------------------------- public API
@@ -285,9 +279,7 @@ export class ConstellationRenderer implements GraphRenderer {
     const dir = this.tmp.copy(this.camera.position).sub(this.controls.target);
     if (dir.lengthSq() < 1) dir.set(0.4, 0.25, 1);
     dir.normalize();
-    // fit the narrower of the vertical and horizontal fields of view, so tall, thin panes still frame everything
-    const v = (FOV * Math.PI) / 360, h = Math.atan(Math.tan(v) * this.camera.aspect);
-    const dist = this.fitDistance(b.radius);
+    const dist = this.fitDistance(b.radius); // fits the narrower field of view, so tall, thin panes still frame everything
     const c = new THREE.Vector3(b.cx, b.cy, b.cz);
     this.startTween(c.clone().addScaledVector(dir, dist), c, 1500);
   }
@@ -339,7 +331,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private novaStop(finished: boolean): void {
     this.sim.novaCancel();
     this.nova = null; this.novaBloom = 0; this.dirty = true; this.stale = true;
-    this.uniforms.uPulse.value = 1; this.uniforms.uNova.value = 0; this.flashEl.style.opacity = "0";
+    this.uniforms.uPulse.value = 1; this.uniforms.uNova.value = 0; this.flashEl.setCssProps({ opacity: "0" });
     this.bloom.strength = effectiveHighContrast(this.settings) ? 0 : 0.35 * this.settings.glow;
     this.cb.onActivity?.(null, finished ? "Layout optimized" : "Supernova stopped");
   }
@@ -365,12 +357,12 @@ export class ConstellationRenderer implements GraphRenderer {
 
   private fitDistance(radius: number): number {
     const v = (FOV * Math.PI) / 360, h = Math.atan(Math.tan(v) * this.camera.aspect);
-    return (radius / Math.sin(Math.min(v, h))) * 1.02;
+    return (radius / Math.sin(Math.min(v, h))) * 1.08;
   }
 
   destroy(): void {
-    cancelAnimationFrame(this.raf);
-    clearTimeout(this.resumeTimer);
+    window.cancelAnimationFrame(this.raf);
+    window.clearTimeout(this.resumeTimer);
     this.ro.disconnect(); this.io.disconnect();
     this.controls.removeEventListener("start", this.onControlStart);
     this.controls.removeEventListener("end", this.onControlEnd);
@@ -450,7 +442,6 @@ export class ConstellationRenderer implements GraphRenderer {
   private resize(): void {
     const w = Math.max(1, this.container.clientWidth), h = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(w, h, false);
-    this.canvas.style.width = "100%"; this.canvas.style.height = "100%";
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(w, h); // also resizes every pass
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
@@ -463,10 +454,10 @@ export class ConstellationRenderer implements GraphRenderer {
   private onContextLost = (e: Event) => { e.preventDefault(); this.contextLost = true; };
   private onContextRestored = () => { this.contextLost = false; this.stale = true; this.resize(); };
 
-  private onControlStart = () => { clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null; this.autoFrame = false; this.userActive = true; this.updateRotate(); };
+  private onControlStart = () => { window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null; this.autoFrame = false; this.userActive = true; this.updateRotate(); };
   private onControlEnd = () => {
     this.userActive = false;
-    clearTimeout(this.resumeTimer);
+    window.clearTimeout(this.resumeTimer);
     this.rotateBlockedUntil = performance.now() + 3500;
     this.resumeTimer = window.setTimeout(() => this.updateRotate(), 3550);
     this.updateRotate();
@@ -511,9 +502,9 @@ export class ConstellationRenderer implements GraphRenderer {
     if (at) this.drag.offset.set(n.x - at.x, n.y - at.y, n.z - at.z); // so the note does not jump to the cursor
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
     this.userActive = true; this.autoFrame = false;
-    clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null;
+    window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null;
     this.sim.beginDrag(i);
-    this.canvas.style.cursor = "grabbing";
+    this.canvas.setCssProps({ cursor: "grabbing" });
   }
 
   private dragMove(e: PointerEvent): void {
@@ -573,7 +564,7 @@ export class ConstellationRenderer implements GraphRenderer {
   // ----------------------------------------------------------------- frame
 
   private frame = (now: number) => {
-    this.raf = requestAnimationFrame(this.frame);
+    this.raf = window.requestAnimationFrame(this.frame);
     if (!this.visible || document.hidden || this.contextLost) { this.last = now; return; }
     const dt = Math.min(0.1, (now - this.last) / 1000 || 0.016);
     this.last = now; this.age += dt; this.frameNo++;
@@ -633,7 +624,7 @@ export class ConstellationRenderer implements GraphRenderer {
       else {
         const c = Math.min(1, (now - nv.t0) / 1.5);
         this.uniforms.uNova.value = c * 0.8; this.uniforms.uPulse.value = 1 + 0.35 * c; this.novaBloom = 0.8 * c * c;
-        this.flashEl.style.opacity = "0";
+        this.flashEl.setCssProps({ opacity: "0" });
       }
     }
     if (nv.stage === "settle") {
@@ -647,7 +638,7 @@ export class ConstellationRenderer implements GraphRenderer {
       }
     }
     if (nv.stage === "trace") {
-      this.uniforms.uNova.value = 0; this.uniforms.uPulse.value = 1; this.novaBloom = 0; this.flashEl.style.opacity = "0";
+      this.uniforms.uNova.value = 0; this.uniforms.uPulse.value = 1; this.novaBloom = 0; this.flashEl.setCssProps({ opacity: "0" });
       this.dirty = true; // node highlights follow the wave
       if (now - nv.traceT0 > (nv.maxDepth + 1) * 0.42 + 1.8) { this.novaStop(true); return; }
     }
@@ -765,7 +756,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   private updateLabels(): void {
     const s = this.settings, nodes = this.sim.nodes, hc = effectiveHighContrast(s);
-    if (this.nova && this.nova.stage !== "trace") { for (const l of this.labels) l.style.display = "none"; return; }
+    if (this.nova && this.nova.stage !== "trace") { for (const l of this.labels) l.toggleClass("cg-hidden", true); return; }
     const want: number[] = [];
     const seen = new Set<number>();
     const add = (i: number) => { if (i >= 0 && !seen.has(i) && !this.hidden.has(nodes[i].gi)) { seen.add(i); want.push(i); } };
@@ -795,7 +786,7 @@ export class ConstellationRenderer implements GraphRenderer {
       if (!must && placed.some(r => x < r.x + r.w && x + lw > r.x && y < r.y + r.h && y + lh > r.y)) continue;
       placed.push({ x, y, w: lw, h: lh });
       let el = this.labels[used];
-      if (!el) { el = document.createElement("div"); el.className = "cg-label"; this.labelLayer.appendChild(el); this.labels[used] = el; }
+      if (!el) { el = this.labelLayer.createDiv({ cls: "cg-label" }); this.labels[used] = el; }
       if (el.textContent !== n.name) el.textContent = n.name;
       // fade with real distance from the camera; labels never drop below 60% and are always opaque in high contrast
       const dist = this.camera.position.distanceTo(this.tmp2.set(n.x, n.y, n.z));
@@ -803,9 +794,9 @@ export class ConstellationRenderer implements GraphRenderer {
       el.style.opacity = String(must || hc ? 1 : Math.min(1, depth * Math.min(1, this.alpha[i] * 1.3)));
       el.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy)}px) translate(-50%, -100%)`;
       el.classList.toggle("cg-label-strong", must);
-      el.style.display = "";
+      el.toggleClass("cg-hidden", false);
       used++;
     }
-    for (let k = used; k < this.labels.length; k++) this.labels[k].style.display = "none";
+    for (let k = used; k < this.labels.length; k++) this.labels[k].toggleClass("cg-hidden", true);
   }
 }

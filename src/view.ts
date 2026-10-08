@@ -70,6 +70,6 @@ export class ConstellationView extends ItemView {
     const reuse = !newTab && recent && recent !== this.leaf && recent.view.getViewType() === "markdown" ? recent : null;
     const leaf = reuse ?? this.app.workspace.getLeaf("tab");
     void leaf.openFile(f);
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
 }

@@ -1,6 +1,6 @@
 /* Constellation Graph. Everything is scoped to .cg-root and uses Obsidian's variables with fallbacks. */
 
-.cg-view { padding: 0 !important; overflow: hidden; }
+.view-content.cg-view { padding: 0; overflow: hidden; }
 
 .cg-root {
   --cg-bg: #05070c;
@@ -116,10 +116,6 @@
   .cg-list { width: calc(100% - 24px); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cg-root * { transition: none !important; animation: none !important; }
-}
-
 /* shown instead of the 3D view when WebGL is unavailable */
 .cg-notice { position: absolute; left: 50%; top: 55%; transform: translateX(-50%); width: min(420px, 86%); padding: 12px 16px; text-align: center;
   color: var(--cg-ink); background: var(--cg-panel); border: 1px solid var(--cg-border); border-radius: 10px; z-index: 2; }
@@ -129,3 +125,4 @@
 .cg-contrast .cg-flash { display: none; }
 .cg-btn.cg-on, .cg-btn[aria-pressed="true"] { background: var(--cg-accent); border-color: transparent; color: #fff; }
 @media (prefers-reduced-motion: reduce) { .cg-flash { display: none; } }
+.cg-hidden { display: none; }

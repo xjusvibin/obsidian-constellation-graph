@@ -1,9 +1,12 @@
-import { forceSimulation, forceLink, forceManyBody } from "d3-force-3d";
+import { forceSimulation, forceLink, forceManyBody, type Force, type ForceLink, type ForceManyBody, type Simulation as D3Simulation } from "d3-force-3d";
 import type { GraphData, SimNode } from "./types";
 import type { MotionLevel } from "./settings";
 
 const GAIN: Record<MotionLevel, number> = { off: 0, calm: 1, lively: 2.4 };
 const STEP = 1 / 60;
+
+/** A link as d3 sees it: ids at first, replaced by the node objects once the simulation has resolved them. */
+interface SimLink { source: string | SimNode; target: string | SimNode }
 const COLLAPSE = 1.5; // seconds spent crushing everything toward one point
 const SETTLE_MAX = 4.6; // seconds allowed for the layout to find its new resting shape
 
@@ -28,9 +31,9 @@ export class Simulation {
   srcs: SimNode[] = [];
   dsts: SimNode[] = [];
 
-  private sim: any;
-  private linkForce: any;
-  private charge: any;
+  private sim: D3Simulation<SimNode>;
+  private linkForce: ForceLink<SimNode, SimLink>;
+  private charge: ForceManyBody<SimNode>;
   private level: MotionLevel | null = null;
   private avgTick = 0;
   private frameNo = 0;
@@ -50,11 +53,12 @@ export class Simulation {
   private cn = new Float64Array(1);
 
   constructor() {
-    this.linkForce = forceLink([]).id((d: SimNode) => d.id).distance(26).strength(0.3);
-    this.charge = forceManyBody().strength(-30).theta(0.9).distanceMax(340);
-    const flow: any = (_alpha: number) => this.flow();
-    flow.initialize = () => { /* nodes are tracked by this class */ };
-    this.sim = forceSimulation([], 3)
+    this.linkForce = forceLink<SimNode, SimLink>([]).id(d => d.id).distance(26).strength(0.3);
+    this.charge = forceManyBody<SimNode>().strength(-30).theta(0.9).distanceMax(340);
+    const flow: Force<SimNode> = Object.assign((_alpha: number) => this.flow(), {
+      initialize: () => { /* nodes are tracked by this class */ },
+    });
+    this.sim = forceSimulation<SimNode>([], 3)
       .stop()
       .alphaDecay(0.02)
       .velocityDecay(0.34)
@@ -216,10 +220,10 @@ export class Simulation {
     this.linkForce.links([]);
     this.nodes = next;
     this.sim.nodes(next);
-    const links = data.links.map(l => ({ source: l.source, target: l.target }));
+    const links: SimLink[] = data.links.map(l => ({ source: l.source, target: l.target }));
     this.linkForce.links(links);
-    this.srcs = links.map(l => (l as any).source as SimNode);
-    this.dsts = links.map(l => (l as any).target as SimNode);
+    this.srcs = links.map(l => l.source as SimNode);
+    this.dsts = links.map(l => l.target as SimNode);
     this.sim.alpha(Math.max(this.sim.alpha(), old.size ? 0.35 : 1));
   }
 
@@ -243,7 +247,7 @@ export class Simulation {
     if (n === budget) this.acc = 0;
   }
 
-  /** Centre and radius that contain ~92% of the nodes, for framing the camera. */
+  /** Centre and radius that contain ~97% of the nodes, for framing the camera. */
   bounds(): { cx: number; cy: number; cz: number; radius: number } {
     const n = this.nodes.length;
     if (!n) return { cx: 0, cy: 0, cz: 0, radius: 100 };
@@ -251,7 +255,7 @@ export class Simulation {
     for (const p of this.nodes) { sx += p.x; sy += p.y; sz += p.z; }
     const cx = sx / n, cy = sy / n, cz = sz / n;
     const d = this.nodes.map(p => Math.hypot(p.x - cx, p.y - cy, p.z - cz)).sort((a, b) => a - b);
-    return { cx, cy, cz, radius: Math.max(40, d[Math.floor((n - 1) * 0.92)]) };
+    return { cx, cy, cz, radius: Math.max(40, d[Math.floor((n - 1) * 0.97)]) };
   }
 
   private flow(): void {

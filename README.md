@@ -72,7 +72,7 @@ Rendering uses point sprites and line segments rather than a mesh per note. A ti
 
 ## Known limitations
 
-- Desktop only (it needs WebGL and a pointer).
+- Desktop only (it needs WebGL and a pointer), and Obsidian 1.7.2 or newer.
 - Pop-out windows are not specifically supported yet.
 - Very large vaults (roughly 10,000+ notes) will be slow to lay out; exclude folders to thin the graph.
 

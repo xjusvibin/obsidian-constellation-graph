@@ -8,11 +8,7 @@ let instances = 0;
 type Attrs = Record<string, string>;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, attrs: Attrs = {}, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  for (const k of Object.keys(attrs)) e.setAttribute(k, attrs[k]);
-  if (text !== undefined) e.textContent = text;
-  return e;
+  return createEl(tag, { cls: cls || undefined, attr: attrs, text });
 }
 
 const HELP = [

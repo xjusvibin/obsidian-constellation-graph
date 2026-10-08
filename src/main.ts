@@ -15,7 +15,7 @@ export default class ConstellationPlugin extends Plugin {
     this.settings = sanitizeSettings(await this.loadData());
     this.registerView(VIEW_TYPE, leaf => new ConstellationView(leaf, this));
     this.addRibbonIcon("orbit", "Open constellation graph", () => void this.activate());
-    this.addCommand({ id: "open", name: "Open constellation graph", callback: () => void this.activate() });
+    this.addCommand({ id: "open", name: "Open graph view", callback: () => void this.activate() });
     this.addSettingTab(new ConstellationSettingTab(this.app, this));
     // wait until the workspace has been restored, otherwise the saved layout would open over it
     this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) void this.activate(); });
@@ -34,7 +34,7 @@ export default class ConstellationPlugin extends Plugin {
       leaf = workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   private views(): ConstellationView[] {
