@@ -26,11 +26,25 @@ export class ArcadeScreen {
   private shown = false;
 
   constructor(parent: HTMLElement, private backend: ArcadeBackend | undefined, private hooks: { again(): void; close(): void }) {
-    this.el = parent.createDiv({ cls: "cg-arcade cg-hidden", attr: { role: "dialog", "aria-label": "Arcade high scores" } });
+    this.el = parent.createDiv({ cls: "cg-arcade cg-hidden", attr: { role: "dialog", "aria-modal": "true", "aria-label": "Arcade high scores" } });
+    this.el.addEventListener("keydown", e => this.trapTab(e));
     this.body = this.el.createDiv({ cls: "cg-arcade-body" });
   }
 
   get visible(): boolean { return this.shown; }
+
+  /** Keep Tab inside the screen while it is up, and put focus on the first thing you can use. */
+  private trapTab(e: KeyboardEvent): void {
+    if (e.key !== "Tab") return;
+    const items = Array.from(this.el.querySelectorAll<HTMLElement>("button:not([disabled]), input"));
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1], at = activeDocument.activeElement;
+    if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+    e.stopPropagation();
+  }
+
+  private focusFirst(): void { window.setTimeout(() => this.el.querySelector<HTMLElement>("input, button:not([disabled])")?.focus(), 30); }
 
   show(result: RunResult): void {
     this.result = result; this.entry = null; this.shown = true;
@@ -38,6 +52,7 @@ export class ArcadeScreen {
     const score = runScore(result.waves, result.kills), table = this.backend?.table() ?? [];
     if (this.backend && qualifies(table, score)) this.askName(score);
     else this.showTable(null, false);
+    this.focusFirst();
   }
 
   hide(): void {
@@ -73,6 +88,7 @@ export class ArcadeScreen {
       this.showTable(entry, true);
     };
     save.addEventListener("click", done);
+    this.focusFirst();
     input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") done(); });
     window.setTimeout(() => { input.focus(); input.select(); }, 50);
   }
@@ -84,6 +100,7 @@ export class ArcadeScreen {
     this.drawRows(this.body.createDiv({ cls: "cg-arcade-rows" }), table, mine);
     if (!table.length) this.line("NO SCORES YET", "cg-arcade-dim");
     this.buttons(saved);
+    this.focusFirst();
   }
 
   private drawRows(host: HTMLElement, rows: readonly ScoreEntry[], mine: ScoreEntry | null): void {

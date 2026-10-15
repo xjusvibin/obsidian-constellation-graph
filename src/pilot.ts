@@ -410,7 +410,7 @@ export class PilotController {
     this.tipChip = this.hud.createDiv({ cls: "cg-pilot-tip cg-hidden", attr: { role: "status" } });
     this.warnChip = this.hud.createDiv({ cls: "cg-pilot-warn cg-hidden", attr: { role: "alert" } });
     this.drones = new DroneField(this.scene);
-    this.arcade = new ArcadeScreen(this.hud, host.arcade, { again: () => this.startRun(), close: () => this.closeArcade() });
+    this.arcade = new ArcadeScreen(container, host.arcade, { again: () => this.startRun(), close: () => this.closeArcade() });
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
     this.ringInner = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-inner" });
     this.cross = this.hud.createDiv({ cls: "cg-pilot-cross" });
@@ -796,6 +796,7 @@ export class PilotController {
     if (this.opts.multiplayer || !this.opts.tips) { this.tutorial = null; this.tipChip.classList.add("cg-hidden"); return; }
     this.tutorial = new Tutorial((text, done) => {
       this.tipChip.textContent = text; this.tipChip.classList.remove("cg-hidden"); this.tipChip.classList.toggle("cg-done", done);
+      this.host.onState(true, text); // the heads-up display is hidden from screen readers, so the tip is read out here
       if (done) { this.host.tipsDone(); this.tipTimer = window.setTimeout(() => { this.tipChip.classList.add("cg-hidden"); this.tutorial = null; }, 7000); }
     });
     this.tutorial.start();

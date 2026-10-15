@@ -362,3 +362,18 @@
 .cg-pilot-warn.cg-hidden { display: none; }
 @keyframes cg-warn-blink { to { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .cg-pilot-warn { animation: none; } }
+
+/* High contrast for the newer HUD pieces */
+.cg-contrast .cg-pilot-pad, .cg-contrast .cg-pilot-drones, .cg-contrast .cg-pilot-tip, .cg-contrast .cg-round { background: #000; border: 2px solid #fff; color: #fff; }
+.cg-contrast .cg-pilot-warn { background: #000; border: 3px solid #fff; color: #fff; animation: none; }
+.cg-contrast .cg-banner { background: #000; border: 3px solid #fff; color: #fff; box-shadow: none; }
+.cg-contrast .cg-arcade { background: #000; color: #fff; }
+.cg-contrast .cg-arcade::after { display: none; }
+.cg-contrast .cg-arcade-body { background: #000; border: 3px solid #fff; box-shadow: none; }
+.cg-contrast .cg-arcade-title, .cg-contrast .cg-arcade-score, .cg-contrast .cg-arcade-sub, .cg-contrast .cg-arcade-rank, .cg-contrast .cg-arcade-waves, .cg-contrast .cg-arcade-pts, .cg-contrast .cg-arcade-dim, .cg-contrast .cg-arcade-note, .cg-contrast .cg-arcade-blink { color: #fff; text-shadow: none; animation: none; }
+.cg-contrast .cg-arcade-btn { color: #fff; border: 2px solid #fff; }
+.cg-contrast .cg-arcade-btn:hover, .cg-contrast .cg-arcade-btn:focus-visible { background: #fff; color: #000; }
+.cg-contrast .cg-arcade-mine { animation: none; outline: 2px solid #fff; background: transparent; }
+.cg-contrast .cg-arcade-input { color: #fff; border-color: #fff; }
+/* a clear focus ring on the arcade screen's buttons for keyboard use */
+.cg-arcade-btn:focus-visible, .cg-arcade-input:focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; }
