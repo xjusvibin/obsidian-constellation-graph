@@ -28,7 +28,7 @@ interface RemoteBolt { owner: string; id: string; kind: 0 | 1; speed: number; o:
 interface Burst { line: THREE.LineSegments; age: number; size: number; live: boolean }
 
 /** Another pilot as a target: where their ship is drawn and how fast it is moving (for the lead pip). */
-export interface RemoteTarget { id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; dist: number }
+export interface RemoteTarget { name: string; id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; dist: number }
 
 export interface RemoteHooks {
   /** Does this segment of a bolt's flight hit your own ship? (It also applies the damage.) */
@@ -83,6 +83,12 @@ export class RemoteWorld {
 
   /** The pilots you could watch, in a steady order. */
   get watchable(): string[] { return [...this.ships.entries()].filter(([, s]) => s.shown).map(([id]) => id); }
+
+  /** Where a pilot's ship is drawn right now. */
+  pilotPosition(id: string, out: THREE.Vector3): boolean {
+    const s = this.ships.get(id); if (!s || !s.shown) return false;
+    out.copy(s.ship.group.position); return true;
+  }
 
   /** Where a pilot's ship is and which way it faces, for the spectator camera. */
   followState(id: string, outPos: THREE.Vector3, outQuat: THREE.Quaternion, outVel: THREE.Vector3): { name: string; color: string; scale: number } | null {
@@ -236,8 +242,8 @@ export class RemoteWorld {
       s.ship.outline.opacity = p.pr ? 0.35 + 0.35 * Math.sin(now * 0.02) : 0.9; // a ship that has just respawned shimmers
       this.plate(s, g.position, dist, p.hp, p.sd ?? 0, width, height);
       let t = this.targetList[targets];
-      if (!t) { t = { id, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, dist: 0 }; this.targetList[targets] = t; }
-      t.id = id; t.x = g.position.x; t.y = g.position.y; t.z = g.position.z; t.vx = p.v[0]; t.vy = p.v[1]; t.vz = p.v[2]; t.dist = dist; targets++;
+      if (!t) { t = { name: s.name, id, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, dist: 0 }; this.targetList[targets] = t; }
+      t.id = id; t.name = s.name; t.x = g.position.x; t.y = g.position.y; t.z = g.position.z; t.vx = p.v[0]; t.vy = p.v[1]; t.vz = p.v[2]; t.dist = dist; targets++;
     }
     this.targetList.length = targets;
     this.stepBolts(dt);

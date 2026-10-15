@@ -46,6 +46,9 @@ test("messages from other pilots are checked", () => {
   assert.equal(p.validMissile({ id: "", o: [0, 0, 0], d: [0, 0, 1], s: 100 }), false);
   assert.equal(p.validMissile({ id: "m", o: [0, 0, 0], d: [0, 0, 9], s: 100 }), false);
   assert.equal(p.validMissile({ id: "m", o: [0, 0, 0], d: [0, 0, 1], s: -5 }), false);
+  assert.ok(p.validMissile({ id: "m", o: [0, 0, 0], d: [0, 0, 1], s: 5, tg: "pilot-b" }));
+  assert.equal(p.validMissile({ id: "m", o: [0, 0, 0], d: [0, 0, 1], s: 5, tg: "" }), false);
+  assert.equal(p.validMissile({ id: "m", o: [0, 0, 0], d: [0, 0, 1], s: 5, tg: 42 }), false);
   const burst = { g: 2, seed: 99, c: [1, 2, 3], r: 6, col: "#ffb347", by: "abc" };
   assert.ok(p.validBurst(burst) && p.validBurst({ ...burst, by: null }));
   assert.equal(p.validBurst({ ...burst, col: "red" }), false);

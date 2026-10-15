@@ -44,11 +44,11 @@ export interface PilotHost {
   onNetworkPose(pose: Pose): void;
   onNetworkShot(shot: ShotMsg): void;
   /** A missile leaves your ship (the world flies it and tells the room). */
-  fireMissile(id: string, from: THREE.Vector3, dir: THREE.Vector3, speed: number): void;
+  fireMissile(id: string, from: THREE.Vector3, dir: THREE.Vector3, speed: number, target: string | null): void;
   /** The scoreboard key (Tab) went down or up. */
   showScores(on: boolean): void;
   /** The other pilots flying right now (reused every frame), the ones you could watch, and where a pilot is (for the spectator camera). */
-  remoteTargets(): readonly { id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; dist: number }[];
+  remoteTargets(): readonly { name: string; id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; dist: number }[];
   watchable(): string[];
   followState(id: string, pos: THREE.Vector3, quat: THREE.Quaternion, vel: THREE.Vector3): { name: string; color: string; scale: number } | null;
 }
@@ -160,7 +160,7 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["Click", "F"], label: "Fire", codes: [null, "KeyF"] },
     { caps: ["R"], label: "Switch blaster / cannon", codes: ["KeyR"] },
     { caps: ["M"], label: "Missile (or right-click)", codes: ["KeyM"] },
-    { caps: ["T"], label: "Lock target", codes: ["KeyT"] },
+    { caps: ["T"], label: p => p.multiplayer ? "Lock a pilot (missiles home)" : "Lock a pilot (in a room)", codes: ["KeyT"] },
     { caps: ["G"], label: p => p.multiplayer ? "Warp is off in a room" : "Warp to target", codes: ["KeyG"] },
     { caps: ["H"], label: p => p.multiplayer ? "Warp is off in a room" : "Back to the hub", codes: ["KeyH"] },
     { caps: ["B"], label: "Fold a group (Shift: all)", codes: ["KeyB"] },
@@ -256,7 +256,7 @@ export class PilotController {
   private heat = 0; private overheated = false;
   private ammo = AMMO_MAX; private ammoAcc = 0; private lastDry = -1e9;
   private weaponBox: HTMLDivElement; private weaponLabel: HTMLSpanElement; private weaponFill: HTMLDivElement;
-  private lockedNode = -1;                 // a note locked as a flight target. Pilot mode is a sandbox: it never selects or opens notes.
+  private lockedPilot: string | null = null; // the pilot you have locked (T): your missiles home on them, and the lead pip follows them
   private warp: Warp | null = null;
   private bolts: Bolt[] = [];
   private bursts: Burst[] = [];
@@ -496,7 +496,7 @@ export class PilotController {
     this.active = true;
     this.vel.set(0, 0, 0); this.spin.set(0, 0, 0); this.stick.set(0, 0);
     this.keys.clear(); this.firing = false; this.warp = null; this.cooldown = 0;
-    this.lockedNode = -1; this.aim = -1; this.frame = 0; this.clock = 0;
+    this.lockedPilot = null; this.aim = -1; this.frame = 0; this.clock = 0;
     this.heat = 0; this.overheated = false; this.ammo = AMMO_MAX; this.ammoAcc = 0;
     this.energy = 1; this.boostLocked = false; this.boosting = false; this.bank = this.tilt = 0;
     this.fov = this.host.baseFov();
@@ -630,7 +630,7 @@ export class PilotController {
   /** B folds the group of the note you are aiming at (or have locked); Shift+B folds every group, or opens them all. */
   private foldGroup(all: boolean): void {
     if (all) { this.host.toggleAllGroups(); this.audio.lock(true); this.host.onState(true, "Toggled every group"); return; }
-    const note = this.aim >= 0 ? this.aim : this.lockedNode;
+    const note = this.aim;
     if (note < 0) { this.host.onState(true, "Aim at a note to fold its group, or press Shift+B to fold them all"); return; }
     const g = this.host.groupOf(note);
     if (g >= 0 && !this.host.isCollapsed(g)) { this.host.collapseGroup(g); this.audio.lock(false); this.host.onState(true, "Group folded"); }
@@ -683,7 +683,7 @@ export class PilotController {
       case "KeyK": this.showKeys(!this.keysShown); break;
       case "KeyT": this.toggleLock(); break;
       case "KeyG": {
-        const t = this.lockedNode >= 0 ? this.lockedNode : this.aim;
+        const t = this.aim;
         if (this.aimC >= 0 && this.aim < 0) { this.warpToGroup(this.aimC); break; }
         if (t >= 0) this.warpToNode(t);
         break;
@@ -702,12 +702,35 @@ export class PilotController {
   private onBlur = () => { this.keys.clear(); this.firing = false; this.host.showScores(false); for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down"); };
 
   /** T locks the note under the crosshair as a flight target (G warps to it); T again, or T over nothing, lets go. */
+  /** T locks the pilot nearest your crosshair (in front of you, within range); T again lets go. Missiles you fire then home on them. */
   private toggleLock(): void {
-    if (this.aim < 0) { if (this.lockedNode >= 0) { this.lockedNode = -1; this.audio.lock(false); } return; }
-    const on = this.lockedNode !== this.aim;
-    this.lockedNode = on ? this.aim : -1;
-    this.audio.lock(on);
+    if (this.lockedPilot) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock released"); return; }
+    if (!this.opts.multiplayer) { this.host.onState(true, "Locking needs other pilots: join a room"); return; }
+    const fwd = this.fwdV.set(0, 0, -1).applyQuaternion(this.quat);
+    let best: { id: string; name: string } | null = null, bestDot = 0.8;
+    for (const t of this.host.remoteTargets()) {
+      if (t.dist > 1100 || t.dist < 5) continue;
+      const dot = ((t.x - this.pos.x) * fwd.x + (t.y - this.pos.y) * fwd.y + (t.z - this.pos.z) * fwd.z) / t.dist;
+      if (dot > bestDot) { bestDot = dot; best = t; }
+    }
+    if (!best) { this.host.onState(true, "No pilot in front of you to lock"); return; }
+    this.lockedPilot = best.id; this.audio.lock(true);
+    this.host.onState(true, `Locked on ${best.name}: your missiles will home`);
   }
+
+  /** The bracket on the locked pilot, and letting go if they have left or been destroyed. */
+  private updateLockMark(dt: number): void {
+    const r = this.lockReticle;
+    r.visible = false;
+    if (!this.lockedPilot) return;
+    const t = this.host.remoteTargets().find(x => x.id === this.lockedPilot);
+    if (!t) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock lost"); return; }
+    if (!this.opts.wireframe || this.health <= 0 || this.watching) return;
+    r.visible = true; r.position.set(t.x, t.y, t.z);
+    r.scale.setScalar(Math.max(2.4, t.dist * 0.03) * 1.45);
+    r.rotation.y += dt * 0.9; r.rotation.x += dt * 0.5;
+  }
+
 
   private onPointerDown = (e: PointerEvent) => {
     if (e.button === 2) { e.preventDefault(); if (this.opts.mouse !== "capture" || this.locked) this.fireMissile(); return; } // right-click: a missile
@@ -1069,10 +1092,10 @@ export class PilotController {
     this.energyFill.style.width = (this.energy * 100).toFixed(1) + "%";
     this.energyFill.classList.toggle("cg-low", this.boostLocked);
     if (this.weapon === 0) { // the blaster shows its heat; the cannon shows its rounds
-      this.weaponLabel.textContent = (this.overheated ? "BLASTER OVERHEATED" : "BLASTER") + `  ·  MISSILES ${this.missiles}`;
+      this.weaponLabel.textContent = (this.overheated ? "BLASTER OVERHEATED" : "BLASTER") + `  ·  MISSILES ${this.missiles}${this.lockedPilot ? "  ·  LOCK" : ""}`;
       this.weaponFill.style.width = (clamp(this.heat, 0, 1) * 100).toFixed(1) + "%";
     } else {
-      this.weaponLabel.textContent = `CANNON ${this.ammo}/${AMMO_MAX}  ·  MISSILES ${this.missiles}`;
+      this.weaponLabel.textContent = `CANNON ${this.ammo}/${AMMO_MAX}  ·  MISSILES ${this.missiles}${this.lockedPilot ? "  ·  LOCK" : ""}`;
       this.weaponFill.style.width = (clamp(this.ammo / AMMO_MAX, 0, 1) * 100).toFixed(1) + "%";
     }
     this.weaponBox.classList.toggle("cg-hot", this.weapon === 0 && (this.overheated || this.heat > 0.75));
@@ -1210,6 +1233,7 @@ export class PilotController {
     let best: { x: number; y: number; z: number; vx: number; vy: number; vz: number; dist: number } | null = null, bestDot = 0.9;
     for (const t of this.host.remoteTargets()) {
       if (t.dist > 1100 || t.dist < 5) continue;
+      if (t.id === this.lockedPilot) { best = t; break; } // a locked pilot always gets the pip
       const dot = ((t.x - this.pos.x) * fwd.x + (t.y - this.pos.y) * fwd.y + (t.z - this.pos.z) * fwd.z) / t.dist;
       if (dot > bestDot) { bestDot = dot; best = t; }
     }
@@ -1308,11 +1332,8 @@ export class PilotController {
     const body = cl >= 0 ? this.host.clusterBodies().find(x => x.g === cl) : undefined, n = i >= 0 ? this.host.nodes()[i] : null;
     const to = body ? this.hitA.set(body.x, body.y, body.z) : n ? this.hitA.set(n.x, n.y, n.z) : this.hitA.set(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
     const dir = this.hitB.copy(to).sub(from).normalize();
-    this.host.fireMissile(crypto.randomUUID(), from, dir, this.vel.length());
+    this.host.fireMissile(crypto.randomUUID(), from, dir, this.vel.length(), this.lockedPilot);
   }
-
-  /** The note you have locked as a flight target, or -1. */
-  get lockedIndex(): number { return this.lockedNode; }
 
   /** True once after you were destroyed by another pilot's bolt, so the room can be told who did it. */
   takeDeath(): boolean { const d = this.died; this.died = false; return d; }
@@ -1456,7 +1477,7 @@ export class PilotController {
         r.rotation.y += dt * 1.3; r.rotation.x += dt * 0.8;
       }
     }
-    place(this.lockReticle, this.lockedNode, 1.45, -0.9);
+    this.updateLockMark(dt);
     this.updateLead();
 
     for (const b of this.bursts) {

@@ -13,6 +13,7 @@ export const PICKUP_GRAB_RADIUS = 7;
 export const MISSILES_MAX = 2;
 
 export const MISSILE_SPEED = 420;
+export const MISSILE_TURN = 1.6;     // radians per second a missile can turn toward a pilot it is locked on
 export const MISSILE_REACH = 900;
 export const MISSILE_FUSE = 8;        // within this distance of a ship it goes off
 export const MISSILE_DAMAGE = 60;     // at the ship's middle; half of that at the edge of the fuse distance
@@ -94,11 +95,12 @@ export function missileDamage(dist: number): number {
 /** What the messages about missiles, bursts and pickups may contain. Everything else is refused. */
 const finite3 = (v: unknown, max: number): v is [number, number, number] => Array.isArray(v) && v.length === 3 && v.every(x => typeof x === "number" && Number.isFinite(x) && Math.abs(x) <= max);
 
-export interface MissileMsg { id: string; o: [number, number, number]; d: [number, number, number]; s: number }
+export interface MissileMsg { id: string; o: [number, number, number]; d: [number, number, number]; s: number; tg?: string }
 export function validMissile(v: unknown): v is MissileMsg {
   if (!v || typeof v !== "object") return false;
   const m = v as MissileMsg;
-  return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 && finite3(m.o, 100_000) && finite3(m.d, 1.01) && typeof m.s === "number" && Number.isFinite(m.s) && m.s >= 0 && m.s <= 20_000;
+  return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 && finite3(m.o, 100_000) && finite3(m.d, 1.01) && typeof m.s === "number" && Number.isFinite(m.s) && m.s >= 0 && m.s <= 20_000
+    && (m.tg === undefined || (typeof m.tg === "string" && m.tg.length > 0 && m.tg.length <= 64));
 }
 
 export interface BurstMsg { g: number; seed: number; c: [number, number, number]; r: number; col: string; by: string | null }

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
   CLUSTER_HIT_SCALE, METEOR_COOLDOWN, METEOR_DAMAGE, METEOR_LIFE, METEOR_MAX_LIVE, METEOR_RADIUS, MISSILE_FUSE, MISSILE_REACH,
-  MISSILE_SPEED, PICKUP_GRAB_RADIUS, PICKUP_RESPAWN_MS, meteorAt, meteorCount, meteorField, missileDamage,
+  MISSILE_SPEED, MISSILE_TURN, PICKUP_GRAB_RADIUS, PICKUP_RESPAWN_MS, meteorAt, meteorCount, meteorField, missileDamage,
   type BurstMsg, type Meteor, type Pickup, type PickupKind,
 } from "./powerups";
 
@@ -20,6 +20,8 @@ export interface PowerHooks {
   grabbed(kind: PickupKind): void;
   explode(x: number, y: number, z: number, size: number, color: string): void;
   sound(kind: "pickup" | "launch" | "boom" | "break"): void;
+  /** Where a pilot is (you, or another pilot as drawn here), for a missile that is locked on to them. */
+  pilotPosition(id: string, out: THREE.Vector3): boolean;
 }
 
 const MAX_MISSILES = 8;
@@ -27,7 +29,7 @@ const NO_CLUSTERS: ReturnType<PowerHooks["clusters"]> = [];
 const LATENCY_LEAD = 0.05;
 const KIND_COLOR = [0xff6a3a, 0x6ad8ff, 0x7dff9a];
 
-interface Missile { id: string; owner: string; o: THREE.Vector3; d: THREE.Vector3; speed: number; travelled: number; prev: THREE.Vector3; head: THREE.Vector3 }
+interface Missile { target: string | null; id: string; owner: string; o: THREE.Vector3; d: THREE.Vector3; speed: number; travelled: number; prev: THREE.Vector3; head: THREE.Vector3 }
 interface Burst { at: number; by: string | null; color: THREE.Color; meteors: Meteor[]; lastHit: Float64Array }
 
 /**
@@ -53,6 +55,8 @@ export class PowerWorld {
   private s = new THREE.Vector3();
   private c = new THREE.Color();
   private pos = { x: 0, y: 0, z: 0 };
+  private tgt = new THREE.Vector3();
+  private want = new THREE.Vector3();
   private owned: { dispose(): void }[] = [];
 
   constructor(private scene: THREE.Scene, private hooks: PowerHooks) {
@@ -89,11 +93,11 @@ export class PowerWorld {
   remoteGrab(id: number, now: number): void { if (this.pickups[id]) this.takenUntil[id] = now + PICKUP_RESPAWN_MS; }
 
   /** A missile leaves a ship (yours or another pilot's). `speed` is the ship's own speed, which the missile keeps. */
-  launch(id: string, owner: string, o: THREE.Vector3, d: THREE.Vector3, speed: number, remote = false): void {
+  launch(id: string, owner: string, o: THREE.Vector3, d: THREE.Vector3, speed: number, remote = false, target: string | null = null): void {
     if (this.missiles.length >= MAX_MISSILES) this.missiles.shift();
     if (remote) o = o.clone().addScaledVector(d.clone().normalize(), speed * LATENCY_LEAD); // a shot is news by the time it arrives
     const dir = d.clone().normalize();
-    this.missiles.push({ id, owner, o: o.clone(), d: dir, speed, travelled: 0, prev: o.clone(), head: o.clone() });
+    this.missiles.push({ target, id, owner, o: o.clone(), d: dir, speed, travelled: 0, prev: o.clone(), head: o.clone() });
     this.hooks.sound("launch");
   }
 
@@ -147,8 +151,16 @@ export class PowerWorld {
     const clusters = this.missiles.length ? this.hooks.clusters() : NO_CLUSTERS;
     for (let k = this.missiles.length - 1; k >= 0; k--) {
       const m = this.missiles[k];
-      m.prev.copy(m.head); m.travelled += (m.speed + MISSILE_SPEED) * dt;
-      m.head.copy(m.o).addScaledVector(m.d, m.travelled);
+      if (m.target && this.hooks.pilotPosition(m.target, this.tgt)) { // locked on: turn toward the pilot, but only so fast, so it can be dodged
+        const want = this.want.copy(this.tgt).sub(m.head), len = want.length();
+        if (len > 1e-3) {
+          want.divideScalar(len);
+          const angle = Math.acos(Math.max(-1, Math.min(1, m.d.dot(want))));
+          if (angle > 1e-4) m.d.lerp(want, Math.min(1, (MISSILE_TURN * dt) / angle)).normalize();
+        }
+      }
+      const step = (m.speed + MISSILE_SPEED) * dt;
+      m.prev.copy(m.head); m.head.addScaledVector(m.d, step); m.travelled += step;
       let done = false;
       // another pilot's missile near your ship: you decide whether it hit
       if (m.owner !== self && alive) {

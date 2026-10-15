@@ -243,9 +243,9 @@ export class ConstellationRenderer implements GraphRenderer {
       onNetworkPose: pose => this.cb.onNetworkPose?.(pose),
       onNetworkShot: shot => this.cb.onNetworkShot?.(shot),
       showScores: on => this.cb.onScores?.(on),
-      fireMissile: (id, from, dir, speed) => {
-        this.powers.launch(id, this.selfId, from, dir, speed);
-        this.cb.onNetworkMissile?.({ id, o: [from.x, from.y, from.z], d: [dir.x, dir.y, dir.z], s: Math.round(speed) });
+      fireMissile: (id, from, dir, speed, target) => {
+        this.powers.launch(id, this.selfId, from, dir, speed, false, target);
+        this.cb.onNetworkMissile?.({ id, o: [from.x, from.y, from.z], d: [dir.x, dir.y, dir.z], s: Math.round(speed), ...(target ? { tg: target } : {}) });
       },
       remoteTargets: () => this.remote.targets,
       watchable: () => this.remote.watchable,
@@ -273,6 +273,7 @@ export class ConstellationRenderer implements GraphRenderer {
       grabbed: kind => this.pilot.receivePickup(kind),
       explode: (x, y, z, size, color) => this.remote.explode(x, y, z, size, color),
       sound: kind => this.pilot.playSound(kind),
+      pilotPosition: (id, out) => (id === this.selfId ? this.pilot.shipPosition(out) : this.remote.pilotPosition(id, out)),
     });
 
     this.canvas.addEventListener("pointermove", this.onPointerMove);
@@ -406,7 +407,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   /** Move your constellation to your corner of the shared space (the corner depends on your place in the room). */
   setPowerSeed(seed: string): void { this.powerSeed = seed; this.powersReady = false; }
-  addRemoteMissile(id: string, m: MissileMsg, from: string): void { this.powers.launch(id, from, new THREE.Vector3(...m.o), new THREE.Vector3(...m.d), m.s, true); this.stale = true; }
+  addRemoteMissile(id: string, m: MissileMsg, from: string): void { this.powers.launch(id, from, new THREE.Vector3(...m.o), new THREE.Vector3(...m.d), m.s, true, m.tg ?? null); this.stale = true; }
   addRemoteBurst(b: BurstMsg): void { this.powers.addBurst(b, performance.now()); this.stale = true; }
   remoteGrab(pickup: number): void { this.powers.remoteGrab(pickup, performance.now()); }
 
@@ -1227,7 +1228,7 @@ export class ConstellationRenderer implements GraphRenderer {
     }
     if (this.search) { let c = 0; for (const i of this.search) { add(i); if (++c > 14) break; } }
     else if (this.pilot.active) { // flying: only what you are aiming at or have locked, and whatever is close to the ship
-      add(this.pilot.lockedIndex); add(this.labelPriority[0] ?? -1); // the vault's centre (its most-connected note) is always named; nothing else is
+      add(this.labelPriority[0] ?? -1); // the vault's centre (its most-connected note) is always named; nothing else is
       if (this.frameNo % 8 === 0 || !this.nearAt) this.refreshNear();
       for (const i of this.nearLabels) add(i);
     }
@@ -1247,7 +1248,7 @@ export class ConstellationRenderer implements GraphRenderer {
       const sx = (v.x * 0.5 + 0.5) * w, rise = baseRadius(n.deg) * 2.2 + 6, sy = (-v.y * 0.5 + 0.5) * h - rise;
       const lw = Math.min(260, n.name.length * fs * 0.56 + 14), lh = fs + 8;
       const x = sx - lw / 2, y = sy - lh;
-      const must = i === this.hover || i === this.selected || (this.pilot.active && (i === this.aim || i === this.pilot.lockedIndex));
+      const must = i === this.hover || i === this.selected || (this.pilot.active && i === this.aim);
       if (!must && placed.some(r => x < r.x + r.w && x + lw > r.x && y < r.y + r.h && y + lh > r.y)) continue;
       placed.push({ x, y, w: lw, h: lh });
       let el = this.labels[used];
