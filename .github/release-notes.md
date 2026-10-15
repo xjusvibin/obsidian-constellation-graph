@@ -12,6 +12,11 @@ Pilot mode becomes a sandbox, and you can now fly together.
 - **One size for every ship:** your ship and everyone else's are the same size wherever they are, with a ring that stays visible on screen when a pilot is far away.
 - **Direct mouse aim:** the nose now turns exactly as far as the mouse moves and stops when it stops, with a tighter chase camera, so lining up a shot is easy. Cursor steering is crisper too.
 - **Kill announcements and a scoreboard:** when someone is destroyed everyone sees who did it, and holding Tab shows kills and deaths (also listed in the Fly together panel).
+- **Save an image:** a camera button (or the I key) saves the current view as a PNG download, with no note names in it.
+- **See where you were hit from:** an arc on the screen points toward whoever hit you (blue for the shield, red for the hull), with a different sound for each.
+- **Network help:** each pilot's ping shows in the Fly together panel, and a short "Can't connect?" checklist appears after a failed connection.
+- **Quality setting:** Automatic, Low, Balanced or High, for slower computers or sharper screens.
+- **Optional update notice (off by default):** a once-a-day check of GitHub's releases for a newer version, with a link. Nothing is installed, and it is the only network use outside a room, so it stays off unless you turn it on.
 - **Powerups, missiles and meteors:** pickups float in the sky (missile, shield cell, overdrive). A missile that hits a folded group breaks it into meteors that scatter and damage any ship they hit. Everyone in a room sees the same thing, and each pilot decides whether they were hit.
 - **Damage rework:** every ship now has a 40-point shield on top of a 100-point hull. Hits take the shield first and it recharges by itself after 3.5 seconds without a hit; the hull never heals, except that a kill patches it by 30 and recharges your shield. Shields show on the HUD and on other pilots' nameplates.
 - **Movement balance:** everyone cruises a third faster in a room, the afterburner is a touch slower than before and drains a little faster, and does not refill for two seconds after you are hit, so a fight cannot be escaped by simply running.
