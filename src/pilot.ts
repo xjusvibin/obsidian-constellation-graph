@@ -6,6 +6,7 @@ import { buildCockpit, type Cockpit } from "./cockpit";
 import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
 import { MISSILES_MAX, type PickupKind } from "./powerups";
+import { chooseSpawn } from "./spawn";
 import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
@@ -1171,8 +1172,11 @@ export class PilotController {
 
   /** Where you start (and come back to) in a room: in front of your own constellation, facing it. */
   private placeAtSpawn(): void {
-    const b = this.host.bounds(), c = this.hitC.set(b.cx, b.cy, b.cz);
-    this.pos.set(b.cx, b.cy + b.radius * 0.25, b.cz + b.radius * 1.3 + 80);
+    const b = this.host.bounds(), c = this.hitC.set(b.cx, b.cy, b.cz), reach = b.radius * 1.3 + 80;
+    // four places around your constellation; in a room you come back at the one farthest from every other pilot
+    const spots: [number, number, number][] = [0, 1, 2, 3].map(k => [b.cx + Math.sin(k * Math.PI / 2) * reach, b.cy + b.radius * 0.25, b.cz + Math.cos(k * Math.PI / 2) * reach]);
+    const spot = spots[this.opts.multiplayer ? chooseSpawn(spots, this.host.remoteTargets()) : 0];
+    this.pos.set(spot[0], spot[1], spot[2]);
     this.tmpM.lookAt(this.pos, c, Y_AXIS); this.quat.setFromRotationMatrix(this.tmpM); this.camQuat.copy(this.quat);
     this.vel.set(0, 0, 0); this.spin.set(0, 0, 0); this.stick.set(0, 0);
   }
