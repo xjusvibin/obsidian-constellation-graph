@@ -12,6 +12,7 @@
  * Never: note titles, paths, tags or contents.
  */
 
+import { validRound, type RoundMsg } from "./round";
 import { LossMeter } from "./netstats";
 import { LobbyBrowser, LobbyPublisher, type Listing } from "./lobby";
 import { validBurst, validGrab, validMissile, type BurstMsg, type MissileMsg } from "./powerups";
@@ -168,6 +169,8 @@ export interface SessionCallbacks {
   missile(from: string, missile: MissileMsg): void;
   burst(from: string, burst: BurstMsg): void;
   grab(from: string, pickup: number): void;
+  /** The host started a round. */
+  round(round: RoundMsg): void;
   removed(id: string): void;
 }
 
@@ -398,6 +401,7 @@ export class MultiplayerSession {
     }
     if (m.t === "shot" && validShot(m.shot)) { this.cb.shot(id, m.shot); return; }
     if (m.t === "hit" && validHit(m.hit, this.selfId) && m.hit.target === id) { this.cb.hit(id, m.hit); return; }
+    if (m.t === "round" && validRound(m.round)) { if (this.hostId() === id) this.cb.round(m.round); return; } // only the host can start one
     if (m.t === "kick") { if (this.hostId() === id) this.leave("You were removed from the room by its host."); return; }
     if (m.t === "missile" && validMissile(m.missile)) { this.cb.missile(id, m.missile); return; }
     if (m.t === "burst" && validBurst(m.burst)) { this.cb.burst(id, m.burst); return; }
@@ -522,6 +526,8 @@ export class MultiplayerSession {
   sendMissile(missile: MissileMsg): void { this.sendControl({ t: "missile", missile }); }
   sendBurst(burst: BurstMsg): void { this.sendControl({ t: "burst", burst }); }
   sendGrab(id: number): void { this.sendControl({ t: "grab", id }); }
+  /** The host starts a round for everyone (and for themselves, through the callback). */
+  startRound(round: RoundMsg): void { if (this.isHost) { this.sendControl({ t: "round", round }); this.cb.round(round); } }
   sendShot(shot: ShotMsg): void { this.sendControl({ t: "shot", shot }); }
   /** Tell everyone you were destroyed, and by whom. */
   sendKill(by: string | null): void { this.sendControl({ t: "kill", by }); }

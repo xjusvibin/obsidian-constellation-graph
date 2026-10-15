@@ -1,3 +1,4 @@
+import { ROUND_PRESETS, describeRound, reachedTarget, roundWinners, type RoundMsg, type Tally } from "./round";
 import { ConstellationRenderer, webglAvailable } from "./renderer";
 import { MultiplayerSession, type LinkState } from "./multiplayer";
 import { MultiplayerPanel } from "./multiplayerUi";
@@ -61,6 +62,10 @@ export class ConstellationApp {
   private mpStatus = ""; private mpError = false;
   private score = new Map<string, { kills: number; deaths: number }>();
   private ping = new Map<string, { ms: number; loss: number }>();
+  private round: { r: RoundMsg; endsAt: number } | null = null;
+  private roundTimer = 0;
+  private roundBar!: HTMLElement;     // the round's status, top left
+  private banner!: HTMLElement;       // the winner, in the middle
   private feed!: HTMLElement;              // kill announcements, top of the view
   private board!: HTMLElement;             // the scoreboard (hold Tab while flying)
   private mpActive = false;               // true while you are in a room
@@ -175,6 +180,7 @@ export class ConstellationApp {
       missile: (from, m) => this.renderer.addRemoteMissile?.(m.id, m, from),
       burst: (_id, b) => this.renderer.addRemoteBurst?.(b),
       grab: (_id, pickup) => this.renderer.remoteGrab?.(pickup),
+      round: r => this.beginRound(r),
       removed: id => { this.link.delete(id); this.health.delete(id); this.ping.delete(id); this.renderer.removeRemote?.(id); this.refreshPanel(); },
     }, () => ({ data: this.data, nodes: this.renderer.nodes }), () => this.sessionOptions());
     this.panel = new MultiplayerPanel(this.root, {
@@ -195,6 +201,7 @@ export class ConstellationApp {
       join: (code, name) => this.session.join(code, name),
       leave: () => this.session.leave(),
       isHost: () => this.session.isHost,
+      startRound: key => { const p = ROUND_PRESETS.find(x => x.key === key); if (p?.round) this.session.startRound(p.round); },
       isListed: () => this.session.listed,
       setListed: on => { this.session.setListed(on); this.refreshPanel(); },
       kick: id => this.session.kick(id),
@@ -204,6 +211,8 @@ export class ConstellationApp {
     this.root.appendChild(this.live);
     this.feed = el("div", "cg-feed", { "aria-hidden": "true" }); this.root.appendChild(this.feed);
     this.board = el("div", "cg-board", { "aria-hidden": "true" }); this.board.hidden = true; this.root.appendChild(this.board);
+    this.roundBar = el("div", "cg-round", { "aria-hidden": "true" }); this.roundBar.hidden = true; this.root.appendChild(this.roundBar);
+    this.banner = el("div", "cg-banner", { role: "status" }); this.banner.hidden = true; this.root.appendChild(this.banner);
     this.tip = el("div", "cg-tip", { "aria-hidden": "true" });
     this.tip.hidden = true;
     this.root.appendChild(this.tip);
@@ -354,7 +363,7 @@ export class ConstellationApp {
       this.session.publishGraph();
       this.announce("In a room. Press P to fly.");
     } else if (!inRoom && this.mpActive) {
-      this.mpActive = false;
+      this.mpActive = false; this.endRound(false);
       this.renderer.setMultiplayer?.(false);
       this.health.clear(); this.link.clear(); this.score.clear(); this.ping.clear(); this.feed.replaceChildren(); this.board.hidden = true;
       if (this.queuedData) { const d = this.queuedData; this.queuedData = null; this.setData(d); }
@@ -364,6 +373,49 @@ export class ConstellationApp {
     // a room is a public lobby: the note list and the group list (which show your folder and note names) are put away while you are in one
     this.legend.classList.toggle("cg-hidden", this.mpActive || this.renderer.pilotActive); this.listBtn.classList.toggle("cg-hidden", this.mpActive);
     if (this.mpActive) this.toggleList(false);
+    this.refreshPanel();
+  }
+
+  private tallies(): Tally[] { return this.members.map(m => ({ id: m.id, kills: this.score.get(m.id)?.kills ?? 0, deaths: this.score.get(m.id)?.deaths ?? 0 })); }
+
+  /** The host started a round (this arrives for everyone, host included): scores start again from nothing. */
+  private beginRound(r: RoundMsg): void {
+    if (!this.mpActive) return;
+    this.score.clear(); this.banner.hidden = true;
+    this.round = { r, endsAt: r.mode === "time" ? Date.now() + r.secs * 1000 : 0 };
+    window.clearInterval(this.roundTimer); this.roundTimer = window.setInterval(() => this.checkRound(), 500);
+    this.addFeed(`Round started: ${describeRound(r)}`, false);
+    this.announce(`Round started: ${describeRound(r)}`);
+    this.refreshPanel(); this.checkRound();
+  }
+
+  private addFeed(text: string, mine: boolean): void {
+    const item = el("div", "cg-feed-item" + (mine ? " cg-mine" : ""), {}, text);
+    this.feed.appendChild(item);
+    while (this.feed.childElementCount > 5) this.feed.firstElementChild?.remove();
+    window.setTimeout(() => item.remove(), 7000);
+  }
+
+  /** Show the round's status, and end it when its time is up or someone has reached the target. */
+  private checkRound(): void {
+    const rd = this.round; if (!rd) { this.roundBar.hidden = true; return; }
+    const t = this.tallies(), me = this.score.get(this.session.selfId)?.kills ?? 0;
+    const left = rd.r.mode === "time" ? Math.max(0, Math.ceil((rd.endsAt - Date.now()) / 1000)) : 0;
+    this.roundBar.hidden = false;
+    this.roundBar.textContent = rd.r.mode === "kills" ? `First to ${rd.r.n} kills · you ${me}` : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left · you ${me}`;
+    if (reachedTarget(rd.r, t) || (rd.r.mode === "time" && left <= 0)) this.endRound(true);
+  }
+
+  private endRound(announceWinner: boolean): void {
+    const rd = this.round; this.round = null;
+    window.clearInterval(this.roundTimer); this.roundTimer = 0; this.roundBar.hidden = true;
+    if (!rd || !announceWinner) { this.banner.hidden = true; return; }
+    const winners = roundWinners(this.tallies()), me = this.session.selfId;
+    const names = winners.map(id => this.nameOf(id).replace(/^You$/, "You"));
+    const text = !winners.length ? "Round over" : winners.length > 1 ? `Draw: ${names.join(" and ")}` : winners[0] === me ? "You win the round!" : `${names[0]} wins the round`;
+    this.banner.textContent = text; this.banner.hidden = false;
+    window.setTimeout(() => { this.banner.hidden = true; }, 9000);
+    this.announce(text);
     this.refreshPanel();
   }
 
@@ -394,6 +446,7 @@ export class ConstellationApp {
     this.announce(text);
     this.refreshPanel();
     if (!this.board.hidden) this.renderBoard();
+    this.checkRound();
   }
 
   private showBoard(on: boolean): void {

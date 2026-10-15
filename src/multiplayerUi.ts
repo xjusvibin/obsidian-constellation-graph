@@ -3,6 +3,7 @@ import type { LinkState } from "./multiplayer";
 import { formatRoomCode, inviteLink, parseRoomCode } from "./netcrypto";
 import type { Listing } from "./lobby";
 import { SHIP_COLORS } from "./ship";
+import { ROUND_PRESETS } from "./round";
 import { SLOT_COLORS } from "./remote";
 
 export interface PanelHost {
@@ -16,6 +17,7 @@ export interface PanelHost {
   join(code: string, name: string): Promise<void>;
   leave(): void;
   isHost(): boolean;
+  startRound(key: string): void;
   isListed(): boolean;
   setListed(on: boolean): void;
   kick(id: string): void;
@@ -54,6 +56,8 @@ export class MultiplayerPanel {
   private browseList: HTMLUListElement;
   private browseNote: HTMLDivElement;
   private stopBrowse: (() => void) | null = null;
+  private roundRow: HTMLDivElement;
+  private roundSelect: HTMLSelectElement;
   private listLabel: HTMLLabelElement;
   private listBox: HTMLInputElement;
   private makeBtn: HTMLButtonElement;
@@ -122,6 +126,16 @@ export class MultiplayerPanel {
     this.browseNote = this.browseEl.createDiv({ cls: "cg-lobby-note", text: "Listening for rooms…" });
     this.browseList = this.browseEl.createEl("ul", { cls: "cg-lobby-list" });
     this.browseEl.createDiv({ cls: "cg-lobby-note", text: "A listed room is public: anyone can join it, and sees the host's network address as in any room. Names and codes come from strangers, so treat them that way." });
+
+    // the host can start a round: first to a number of kills, or the most kills before the time runs out
+    this.roundRow = this.el.createDiv({ cls: "cg-multiplayer-actions" });
+    this.roundRow.hidden = true;
+    this.roundSelect = createEl("select", { attr: { "aria-label": "Round" } });
+    for (const p of ROUND_PRESETS) if (p.round) this.roundSelect.appendChild(createEl("option", { text: p.label, attr: { value: p.key } }));
+    const startRound = createEl("button", { cls: "cg-btn", text: "Start round", attr: { type: "button", title: "Everyone's scores start again from nothing" } });
+    startRound.addEventListener("click", () => this.host.startRound(this.roundSelect.value));
+    this.roundSelect.addEventListener("keydown", e => e.stopPropagation());
+    this.roundRow.append(this.roundSelect, startRound);
 
     // the host can put the room on the board
     this.listLabel = this.el.createEl("label", { cls: "cg-lobby-list-opt" });
@@ -211,7 +225,7 @@ export class MultiplayerPanel {
     this.startRow.hidden = inRoom; this.roomRow.hidden = !inRoom;
     if (inRoom) this.endBrowse();
     const host = inRoom && this.host.isHost();
-    this.listLabel.hidden = !host; this.listBox.checked = host && this.host.isListed();
+    this.listLabel.hidden = !host; this.roundRow.hidden = !host; this.listBox.checked = host && this.host.isListed();
     this.codeText.textContent = inRoom ? formatRoomCode(s.code) : "";
     this.list.replaceChildren();
     for (const m of s.members) {
