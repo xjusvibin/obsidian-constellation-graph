@@ -16,6 +16,7 @@ export interface PanelHost {
   create(name: string): Promise<void>;
   join(code: string, name: string): Promise<void>;
   leave(): void;
+  diagnostics(): Promise<string>;
   isHost(): boolean;
   startRound(key: string): void;
   isListed(): boolean;
@@ -113,7 +114,9 @@ export class MultiplayerPanel {
     const copy = createEl("button", { cls: "cg-btn", text: "Copy code", attr: { type: "button" } });
     const leave = createEl("button", { cls: "cg-btn", text: "Leave", attr: { type: "button" } });
     const invite = createEl("button", { cls: "cg-btn", text: "Copy invite link", attr: { type: "button", title: "A link that opens Obsidian with the room code filled in" } });
-    this.roomRow.append(copy, invite, leave);
+    const diag = createEl("button", { cls: "cg-btn", text: "Copy diagnostics", attr: { type: "button", title: "Versions and connection quality for a bug report. No room code, names or note data." } });
+    this.roomRow.append(copy, invite, diag, leave);
+    diag.addEventListener("click", () => { void this.host.diagnostics().then(t => navigator.clipboard?.writeText(t)).then(() => this.say("Diagnostics copied. Paste them into a bug report; they hold no room code, names or note data.", false), () => this.say("Could not copy the diagnostics.", true)); });
     copy.addEventListener("click", () => { void navigator.clipboard?.writeText(formatRoomCode(this.code)).then(() => this.say("Room code copied. Send it to your friends.", false), () => this.say("Could not copy; select the code and copy it by hand.", true)); });
     invite.addEventListener("click", () => { void navigator.clipboard?.writeText(inviteLink(this.code)).then(() => this.say("Invite link copied. Send it to your friends: it opens Obsidian with the code filled in.", false), () => this.say("Could not copy; use Copy code instead.", true)); });
     leave.addEventListener("click", () => this.host.leave());

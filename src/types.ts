@@ -53,6 +53,8 @@ export interface Host {
   updateSettings?(patch: Partial<ConstellationSettings>): void;
   /** Send a web request (Obsidian's requestUrl); resolves with the status. Used only to set up multiplayer connections. */
   post?(url: string, body: string): Promise<number>;
+  /** Versions for the diagnostics text. */
+  versions?(): { plugin: string; obsidian: string; platform: string };
 }
 
 export interface RendererCallbacks {

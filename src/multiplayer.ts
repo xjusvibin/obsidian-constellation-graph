@@ -218,6 +218,22 @@ export class MultiplayerSession {
   private hostId(): string { return this.roster.reduce<RoomMember | null>((a, m) => (!a || m.joinedAt < a.joinedAt ? m : a), null)?.id ?? ""; }
   get isHost(): boolean { return this.active && this.hostId() === this.selfId; }
 
+  /** How each other pilot is reached: the kind of route the browser picked (same network, through a router, or through a TURN relay). */
+  async routes(): Promise<Map<string, string | undefined>> {
+    const out = new Map<string, string | undefined>();
+    for (const [id, peer] of this.peers) {
+      try {
+        const stats = await peer.pc.getStats(); let pair: { localCandidateId?: string } | undefined; const cands = new Map<string, { candidateType?: string }>();
+        stats.forEach((r: { type: string; id: string; state?: string; nominated?: boolean; selected?: boolean; localCandidateId?: string; candidateType?: string }) => {
+          if (r.type === "local-candidate") cands.set(r.id, r);
+          if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) pair = r;
+        });
+        out.set(id, pair?.localCandidateId ? cands.get(pair.localCandidateId)?.candidateType : undefined);
+      } catch { out.set(id, undefined); }
+    }
+    return out;
+  }
+
   /** Is this room on the public board? */
   get listed(): boolean { return !!this.publisher; }
 

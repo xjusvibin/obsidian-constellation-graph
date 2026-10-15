@@ -7,6 +7,7 @@ import { SLOT_COLORS } from "./remote";
 import { FallbackRenderer } from "./fallback";
 import type { GraphData, GraphRenderer, Host, RendererCallbacks } from "./types";
 import { ConstellationSettings, effectiveHighContrast, effectiveMotion, prefersReducedMotion } from "./settings";
+import { formatDiagnostics, relayLabel, routeLabel } from "./diagnostics";
 
 let instances = 0;
 
@@ -202,6 +203,7 @@ export class ConstellationApp {
       create: async name => { await this.session.create(name); },
       join: (code, name) => this.session.join(code, name),
       leave: () => this.session.leave(),
+      diagnostics: () => this.diagnostics(),
       isHost: () => this.session.isHost,
       startRound: key => { const p = ROUND_PRESETS.find(x => x.key === key); if (p?.round) this.session.startRound(p.round); },
       isListed: () => this.session.listed,
@@ -339,6 +341,19 @@ export class ConstellationApp {
     this.novaBtn.classList.toggle("cg-on", kind === "supernova");
     this.stats.textContent = kind ? text : this.statsText;
     if (text && !progress) this.announce(text);
+  }
+
+  /** The text for "Copy diagnostics": versions, connection quality and the kind of route to each pilot. No codes, names or note data. */
+  private async diagnostics(): Promise<string> {
+    const v = this.host.versions?.() ?? { plugin: "unknown", obsidian: "unknown", platform: "unknown" }, s = this.settings;
+    const routes = this.session.active ? await this.session.routes() : new Map<string, string | undefined>();
+    const others = this.members.filter(m => m.id !== this.session.selfId);
+    return formatDiagnostics({
+      plugin: v.plugin, obsidian: v.obsidian, platform: v.platform,
+      relay: relayLabel(s.multiplayerRelayUrl), quality: s.quality, motion: s.motion,
+      room: this.session.active ? { pilots: this.members.length, host: this.session.isHost, status: this.mpStatus, error: this.mpError } : null,
+      peers: others.map((m, i) => ({ n: i + 1, link: this.link.get(m.id) ?? "unknown", pingMs: this.ping.get(m.id)?.ms ?? null, lossPct: this.ping.has(m.id) ? Math.round((this.ping.get(m.id)?.loss ?? 0) * 100) : null, route: routeLabel(routes.get(m.id)) })),
+    });
   }
 
   private closePanel(): void { this.panel.setOpen(false); this.multiBtn.setAttribute("aria-expanded", "false"); this.multiBtn.focus({ preventScroll: true }); }

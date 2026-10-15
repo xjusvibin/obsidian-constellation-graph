@@ -1,4 +1,4 @@
-import { ItemView, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf, Platform, apiVersion, requestUrl } from "obsidian";
 import { ConstellationApp } from "./app";
 import { buildGraphData, signature } from "./data";
 import type ConstellationPlugin from "./main";
@@ -27,6 +27,7 @@ export class ConstellationView extends ItemView {
     this.ca = new ConstellationApp(this.contentEl, {
       openNote: (id, newTab) => this.openNote(id, newTab),
       updateSettings: patch => this.plugin.update(patch),
+      versions: () => ({ plugin: this.plugin.manifest.version, obsidian: apiVersion, platform: Platform.isWin ? "Windows" : Platform.isMacOS ? "macOS" : Platform.isLinux ? "Linux" : Platform.isMobile ? "mobile" : "unknown" }),
       post: async (url, body) => (await requestUrl({ url, method: "POST", body, contentType: "text/plain", throw: false })).status,
     }, this.plugin.settings);
     this.refresh(true);
