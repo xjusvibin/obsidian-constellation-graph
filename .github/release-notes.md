@@ -1,3 +1,11 @@
+**0.9.0: more to do, and easier to play.**
+
+- **Practice drones:** flying alone, red target drones circle your graph in waves, each a little bigger, tougher and faster. They are never there in a room, and a setting turns them off.
+- **First-flight tips:** a short checklist the first time you fly alone (fly, steer, fire, afterburner, shoot a drone). It finishes itself and does not come back unless you turn it on.
+- **Volume keys:** `-` and `=` turn the volume down and up while you fly.
+- **Remappable keys:** the command "Edit pilot keys" lets you rebind every flight action.
+- **Controller settings:** look speed, dead zone, and an aim-assist option that slows the right stick near a note or a drone.
+
 **0.8.0: reliable rooms.** The first step on the road to 1.0.
 
 - **Version check:** every room now carries a protocol version, so a pilot on a version the room no longer supports is told to update instead of joining half-working.
