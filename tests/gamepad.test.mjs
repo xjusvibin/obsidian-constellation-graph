@@ -30,3 +30,8 @@ test("pickPad prefers a controller that is being used", () => {
   assert.equal(m.pickPad([null, idle]), idle);
   assert.equal(m.pickPad([]), null);
 });
+test("the readout name drops the driver notes", () => {
+  assert.equal(m.padName({ id: "Xbox 360 Controller for Windows (STANDARD GAMEPAD)", axes: [], buttons: [] }), "Xbox 360 Controller for Windows");
+  assert.equal(m.padName({ id: "Wireless Controller (Vendor: 054c Product: 09cc)", axes: [], buttons: [] }), "Wireless Controller");
+  assert.equal(m.padName(null), "Controller");
+});

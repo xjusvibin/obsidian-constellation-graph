@@ -313,3 +313,8 @@
 .cg-round[hidden] { display: none; }
 .cg-banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); z-index: 7; padding: 14px 34px; border-radius: 14px; background: rgba(10, 13, 22, 0.9); border: 1px solid #7fe8ff; box-shadow: 0 0 40px rgba(127, 232, 255, 0.3); font-size: 28px; font-weight: 700; letter-spacing: 0.04em; color: #e9fbff; pointer-events: none; text-align: center; }
 .cg-banner[hidden] { display: none; }
+
+/* Controller readout */
+.cg-pilot-pad { position: absolute; left: 14px; bottom: 14px; padding: 4px 10px; border-radius: 999px; background: rgba(10, 13, 22, 0.7); border: 1px solid var(--cg-border); font-size: 12px; color: #9aa6c2; pointer-events: none; transition: color 0.1s, border-color 0.1s; }
+.cg-pilot-pad.cg-hidden { display: none; }
+.cg-pilot-pad.cg-on { color: #e9fbff; border-color: #7fe8ff; }

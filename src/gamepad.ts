@@ -16,7 +16,7 @@ export function deadzone(v: number, dz = PAD_DEADZONE): number {
   return Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
 }
 
-interface PadLike { axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] }
+export interface PadLike { id?: string; axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] }
 
 const down = (p: PadLike, i: number): boolean => !!p.buttons[i]?.pressed;
 const trig = (p: PadLike, i: number): boolean => (p.buttons[i]?.value ?? 0) > 0.4 || down(p, i);
@@ -33,6 +33,12 @@ export function readPad(p: PadLike | null | undefined): PadInput {
   const weapon = down(p, 2), lock = down(p, 3), view = down(p, 12), hub = down(p, 13), scores = down(p, 8);
   const active = !!(thrust || strafe || lookX || lookY || lift || roll || fire || missile || boost || brake || weapon || lock || view || hub || scores);
   return { thrust, strafe, lift, roll, lookX, lookY, fire, boost, brake, missile, lock, weapon, view, hub, scores, active };
+}
+
+/** A short, plain name for the readout: the part of the id before the vendor details, without the driver's mapping note. */
+export function padName(p: PadLike | null | undefined): string {
+  const id = (p?.id ?? "").replace(/\s*\((?:STANDARD GAMEPAD|Vendor:[^)]*)\)\s*/gi, " ").replace(/\s+/g, " ").trim();
+  return id.slice(0, 40) || "Controller";
 }
 
 /** The first controller that is connected and being used, or any connected one. */

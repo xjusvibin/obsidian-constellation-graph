@@ -7,7 +7,7 @@ import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
 import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
-import { pickPad, readPad, type PadInput } from "./gamepad";
+import { padName, pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
@@ -238,6 +238,7 @@ export class PilotController {
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
   private pad: PadInput = readPad(null);        // the game controller, if one is plugged in
+  private padUsed = false;
   private padHeld = new Set<string>();           // buttons already counted, so a held button is one press
   private died = false;
   private missiles = 0;        // missiles you are carrying (pickups give them)
@@ -278,6 +279,8 @@ export class PilotController {
   private fx: SpeedFx;
   private fov = 55;
   private boostFx: HTMLDivElement;
+  private padChip: HTMLDivElement;             // the controller readout: its name, lit while you press it
+  private padChipText = "";
   private boltLines: THREE.LineSegments;
   private boltPos = new Float32Array(MAX_BOLTS * 3 * 6);
   private boltCol = new Float32Array(MAX_BOLTS * 3 * 6);
@@ -363,6 +366,7 @@ export class PilotController {
     this.hud = container.createDiv({ cls: "cg-pilot", attr: { "aria-hidden": "true" } });
     this.hud.hidden = true;
     this.boostFx = this.hud.createDiv({ cls: "cg-pilot-boostfx" });
+    this.padChip = this.hud.createDiv({ cls: "cg-pilot-pad cg-hidden" });
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
     this.ringInner = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-inner" });
     this.cross = this.hud.createDiv({ cls: "cg-pilot-cross" });
@@ -704,6 +708,14 @@ export class PilotController {
     }
   };
 
+  /** The controller readout: hidden with no controller; with one, its name (and a hint) until you use it, lit while you do. */
+  private showPad(name: string, active: boolean): void {
+    if (active) this.padUsed = true;
+    const text = name ? `Controller: ${name}${this.padUsed ? "" : " (press any button)"}` : "";
+    if (text !== this.padChipText) { this.padChipText = text; this.padChip.textContent = text; this.padChip.classList.toggle("cg-hidden", !text); }
+    this.padChip.classList.toggle("cg-on", active);
+  }
+
   private switchWeapon(): void { this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); }
   private switchView(): void { this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); }
 
@@ -795,7 +807,9 @@ export class PilotController {
     if (this.opts.multiplayer) this.stepSpectate(dt);
     const live = this.health > 0 && !this.watching;
 
-    const pd = this.pad = readPad(pickPad(typeof navigator !== "undefined" ? navigator.getGamepads?.() : null));
+    const raw = pickPad(typeof navigator !== "undefined" ? navigator.getGamepads?.() : null);
+    const pd = this.pad = readPad(raw);
+    if (this.frame % 15 === 0 || pd.active) this.showPad(raw ? padName(raw) : "", pd.active);
     const mix = (key: number, pad: number) => clamp(key + pad, -1, 1);
     const thrust = !live ? 0 : mix((k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0), pd.thrust);
     const strafe = !live ? 0 : mix((k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0), pd.strafe);

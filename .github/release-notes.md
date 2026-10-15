@@ -1,3 +1,5 @@
+**0.7.1: a better controller layout.** Right trigger fires, left trigger launches a missile, right bumper (or a click of the left stick) is the afterburner, left bumper brakes, A and B go up and down, X switches weapon, Y locks a pilot, the d-pad rolls (up changes the view, down returns to the hub), and Back holds the scoreboard. A small readout at the bottom left of Pilot mode names your controller and lights up while you use it, so you can see the plugin has found it.
+
 **0.7.0: rounds, tours, controller support and ship colours.**
 
 - **Rounds:** the host can start a round from the Fly together panel: first to 5 or 10 kills, or the most kills in 3 or 5 minutes. Scores start again, a status bar shows at the top and a banner names the winner. Only the host's start is accepted.
