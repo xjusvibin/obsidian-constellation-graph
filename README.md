@@ -71,6 +71,7 @@ Your selection and any hidden groups are kept as the vault changes.
 | **Pilot** (plane) | Fly through your notes in a sandbox (see below) |
 | **Fold** (circled plus) | Fold every group into one point, or open them all |
 | **Fly together** (people) | Make or join a multiplayer room (see below) |
+| **Save image** (camera) | Saves the current view as a PNG download (also the **I** key). It is a download, never a file in your vault, and it contains only the 3D scene, so no note names are in it |
 | Note list | A searchable list of notes, an alternative to the canvas |
 | Help | Keyboard shortcuts |
 
@@ -87,6 +88,7 @@ The graph area is focusable. Press **?** for this list in the app.
 | A | Animate (timelapse) |
 | G | Fold every group into one point, or open them all |
 | N | Supernova |
+| I | Save an image of the view |
 | R | Reset the view |
 | L | Show or hide the note list |
 | / | Focus search |
@@ -127,7 +129,7 @@ The controls are also shown on screen as a small panel of key caps that light up
 - **Folded groups.** Each group (a folder, or a tag) can be folded into one glowing point with its name and size. Shoot a folded group, or click it in the normal view, to open it and watch its notes fly back out. A vault of more than 400 notes starts folded the first time you fly (a setting). In the normal view, the toolbar button or **G** folds every group, or opens them all.
 - **Weapons.** The blaster is quick and runs hot: hold the trigger and it overheats, then goes cold for a moment. The cannon hits three times as hard but each life carries a limited number of rounds (they return when you respawn). Each gun has a best range (blaster 70 to 420, cannon 160 to 650): a hit inside it does a quarter more damage, and past it the damage fades to about half. The lead pip turns green when you are in range, and a hit flashes your crosshair.
 - **Ships.** Choose a Striker (four wings), Dart (delta wing) or Bulwark (heavy gunship) in the settings. They look different and fly and fight the same; other pilots see your choice.
-- **In a room.** Other ships carry a nameplate (name, health, distance) and an edge arrow when off-screen. A lead pip shows where to aim at a moving pilot. Every ship is the same size wherever it is, with a ring that stays visible when a pilot is far away. When someone is destroyed an announcement appears at the top of the view, and holding **Tab** shows the scoreboard (kills and deaths, also listed in the Fly together panel). The note list and group list are put away while you are in a room, so your note and folder names are never on screen in a lobby. **N** watches the other pilots; after 30 seconds without a key in a room you start watching automatically, and any flight key brings you back.
+- **In a room.** Other ships carry a nameplate (name, health, distance) and an edge arrow when off-screen. A lead pip shows where to aim at a moving pilot, and an arc on the screen points toward whoever just hit you (blue for the shield, red for the hull). Every ship is the same size wherever it is, with a ring that stays visible when a pilot is far away. When someone is destroyed an announcement appears at the top of the view, and holding **Tab** shows the scoreboard (kills and deaths, also listed in the Fly together panel). The note list and group list are put away while you are in a room, so your note and folder names are never on screen in a lobby. **N** watches the other pilots; after 30 seconds without a key in a room you start watching automatically, and any flight key brings you back.
 - **Names while you fly.** Only the note you are aiming at or have locked, the notes close to your ship (fading in as you approach), and the vault's most-connected note are named, so the view is never covered in labels.
 - **Speed you can see.** The view widens under afterburner, and dust streaks past as you go faster.
 - **Wireframes and sound.** The plane has a glowing wireframe outline, and target brackets, impact bursts and faint shells around each group are drawn in wireframe too (they can be turned off). Engine, blaster, impact and warp sounds are synthesised in the plugin with the Web Audio API, nothing is loaded from a file, and they can be turned off or turned down. Sound mutes when the window loses focus.

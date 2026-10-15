@@ -106,6 +106,8 @@ export interface GraphRenderer {
   setMultiplayer?(active: boolean, selfId?: string): void;
   /** You destroyed another pilot (heals you a little). */
   rewardKill?(): void;
+  /** The current view as a PNG (the 3D scene only: no note names are drawn into it), or null if it cannot be made. */
+  capture?(): Promise<Blob | null>;
   setWorldOrigin?(slot: number): void;
   setRemoteTopology?(id: string, topology: AnonymousTopology, name: string, slot: number): void;
   setRemotePositions?(id: string, positions: Float32Array): void;

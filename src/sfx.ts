@@ -266,6 +266,23 @@ export class PilotAudio {
     this.tone("sine", 780, 1250, 0.12, 0.12, { t: t + 0.02, wet: 0.3 });
   }
 
+  /** Your shield soaking a hit: a bright, glassy zap, lighter than a hull hit. */
+  shieldHit(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    this.tone("sine", 1500, 760, 0.12, 0.3, { t, wet: 0.35 });
+    this.tone("triangle", 2300, 1500, 0.08, 0.14, { t, wet: 0.4 });
+    this.hiss("highpass", 3200, 5200, 0.1, 0.1, { t, wet: 0.3 });
+  }
+
+  /** The shield giving out: a falling, shattering tone. */
+  shieldDown(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    this.tone("sawtooth", 900, 140, 0.4, 0.22, { t, lp: [3000, 300], wet: 0.3 });
+    this.hiss("bandpass", 4200, 700, 0.35, 0.22, { t, q: 0.9, wet: 0.4 });
+  }
+
   /** The ship hitting a note: always the full collision (a boom, a crunch and a metallic rattle), a little quieter for a lighter hit. `power` is 0..1. */
   bump(power: number): void {
     if (!this.ok()) return;

@@ -382,6 +382,15 @@ export class ConstellationRenderer implements GraphRenderer {
   setRemotePositions(id: string, positions: Float32Array): void { this.remote.setPositions(id, positions); this.stale = true; }
   setRemotePose(id: string, pose: Pose): void { this.remote.setPose(id, pose); this.stale = true; }
   addRemoteShot(id: string, shot: ShotMsg): void { this.remote.addShot(id, shot); this.stale = true; }
+  /** Draw one frame and take it as a PNG. Only the 3D scene is in it (the names are separate page elements), so it never shows a note title. */
+  capture(): Promise<Blob | null> {
+    if (this.contextLost) return Promise.resolve(null);
+    try {
+      if (this.settings.bloom && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+      return new Promise(resolve => this.canvas.toBlob(b => resolve(b), "image/png")); // the snapshot is taken as toBlob is called, before the buffer is cleared
+    } catch { return Promise.resolve(null); }
+  }
+
   /** You destroyed another pilot. */
   rewardKill(): void { this.pilot.healOnKill(); }
   showRemoteHit(hit: HitMsg): void { this.remote.showHit(hit); this.pilot.hitConfirmed(); this.stale = true; }

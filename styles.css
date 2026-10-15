@@ -280,3 +280,9 @@
 .cg-pilot-health { overflow: visible; }
 .cg-pilot-shield { position: absolute; left: 0; right: 0; top: -6px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .cg-pilot-shield-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #5ad2ff, #c8f0ff); }
+
+/* Pilot mode: which way you were hit from */
+.cg-pilot-hitarc { position: absolute; left: 50%; top: 46%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border: 7px solid transparent; border-top-color: var(--arc, #ff5a4a); border-radius: 50%; transform: rotate(var(--ang, 0deg)); opacity: 0; pointer-events: none; filter: drop-shadow(0 0 8px var(--arc, #ff5a4a)); }
+.cg-pilot-hitarc.cg-show { animation: cg-hitarc 0.9s ease-out; }
+@keyframes cg-hitarc { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cg-pilot-hitarc.cg-show { animation-duration: 0.01s; } }

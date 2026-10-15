@@ -239,6 +239,7 @@ export class PilotController {
   private shield = SHIELD_MAX;
   private lastHitAt = -1e9;
   private shieldBar!: HTMLDivElement;
+  private hitArc!: HTMLDivElement;
   // spectator mode and the lead pip
   private watching: string | null = null;
   private idleFor = 0;
@@ -372,6 +373,7 @@ export class PilotController {
     this.weaponLabel = this.weaponBox.createSpan({ cls: "cg-pilot-weapon-label" });
     this.weaponFill = this.weaponBox.createDiv({ cls: "cg-pilot-weapon-bar" }).createDiv({ cls: "cg-pilot-weapon-fill" });
     this.healthBar = this.hud.createDiv({ cls: "cg-pilot-health" });
+    this.hitArc = this.hud.createDiv({ cls: "cg-pilot-hitarc" }); // points toward whoever just hit you
     this.shieldBar = this.healthBar.createDiv({ cls: "cg-pilot-shield" });
     this.shieldFill = this.shieldBar.createDiv({ cls: "cg-pilot-shield-fill" });
     this.healthFill = this.healthBar.createDiv({ cls: "cg-pilot-health-fill" });
@@ -1231,13 +1233,27 @@ export class PilotController {
     const t = len2 > 0 ? clamp(this.hitB.copy(this.pos).sub(a).dot(ab) / len2, 0, 1) : 0;
     if (this.hitC.copy(a).addScaledVector(ab, t).distanceTo(this.pos) > hitRadius(travelled, this.vel.length())) return false;
     let dmg = damageAt(kind, travelled);
-    const soaked = Math.min(this.shield, dmg); // the shield takes the hit first
+    const hadShield = this.shield > 0, soaked = Math.min(this.shield, dmg); // the shield takes the hit first
     this.shield -= soaked; dmg -= soaked;
+    this.showHitFrom(a, dmg <= 0);
     this.health = Math.max(0, this.health - dmg);
     this.lastHitAt = this.clock;
     this.shake = Math.max(this.shake, 0.8);
-    if (this.health <= 0) this.destroyed(); else this.audio.bump(0.5);
+    if (this.health <= 0) this.destroyed();
+    else if (dmg <= 0) this.audio.shieldHit();                         // the shield soaked it all
+    else if (hadShield) { this.audio.shieldDown(); this.audio.bump(0.4); } // it broke through
+    else this.audio.bump(0.5);                                           // hull
     return true;
+  }
+
+  /** A red (hull) or blue (shield) arc on the HUD, on the side the hit came from. `from` is a point on the bolt's path. */
+  private showHitFrom(from: THREE.Vector3, onShield: boolean): void {
+    const v = this.tmpV3.copy(from).sub(this.pos).applyQuaternion(this.tmpQ2.copy(this.camQuat).invert());
+    const deg = Math.atan2(v.x, v.y) * 57.29578; // 0 is straight up, clockwise
+    const el = this.hitArc;
+    el.style.setProperty("--ang", `${deg.toFixed(0)}deg`);
+    el.style.setProperty("--arc", onShield ? "#7fd8ff" : "#ff5a4a");
+    el.classList.remove("cg-show"); void el.offsetWidth; el.classList.add("cg-show"); // restart the fade
   }
 
   /** You destroyed another pilot: a reward of some health back (never past full). */

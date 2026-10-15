@@ -24,6 +24,7 @@ const HELP = [
   "N: supernova, collapse everything, explode it and let it re-settle",
   "P: Pilot mode, a flying sandbox (it never selects or opens notes; the rest of the plugin works as usual outside it). W A S D fly, mouse looks, Shift boosts, X brakes, click or F fires. T locks the target, G warps to it, H returns to the hub, V switches between chase and cockpit view. Esc frees the mouse, P leaves.",
   "G: fold every group into one point, or open them all (click a folded group to open it)",
+  "I: save an image of the view (a PNG download, with no note names in it)",
   "R: reset the view · L: note list · /: search · Esc: clear",
   "Mouse: drag to orbit, scroll to zoom, click to select, double-click or Ctrl+click to open",
 ];
@@ -35,6 +36,7 @@ export class ConstellationApp {
   private flat = false; // true when WebGL is unavailable and only the list UI is shown
   private helpId: string;
   private helpBtn: HTMLButtonElement;
+  private photoBtn: HTMLButtonElement;
   private search: HTMLInputElement;
   private stats: HTMLElement;
   private legend: HTMLElement;
@@ -120,11 +122,12 @@ export class ConstellationApp {
     this.multiBtn.setAttribute("aria-expanded", "false");
     this.listBtn = this.button("cg-btn", "Show note list", "\u2630");
     this.listBtn.setAttribute("aria-expanded", "false");
+    this.photoBtn = this.button("cg-btn", "Save an image of this view (I)", "\u{1F4F7}\uFE0E");
     this.helpBtn = this.button("cg-btn", "Keyboard help", "?");
     this.helpBtn.setAttribute("aria-expanded", "false");
     this.helpBtn.setAttribute("aria-controls", this.helpId);
-    top.append(this.search, this.pauseBtn, resetBtn, this.animBtn, this.novaBtn, this.pilotBtn, this.foldBtn, this.multiBtn, this.listBtn, this.helpBtn);
-    if (this.flat) { this.pauseBtn.hidden = true; resetBtn.hidden = true; this.animBtn.hidden = true; this.novaBtn.hidden = true; this.pilotBtn.hidden = true; this.foldBtn.hidden = true; this.multiBtn.hidden = true; }
+    top.append(this.search, this.pauseBtn, resetBtn, this.animBtn, this.novaBtn, this.pilotBtn, this.foldBtn, this.multiBtn, this.photoBtn, this.listBtn, this.helpBtn);
+    if (this.flat) { this.pauseBtn.hidden = true; resetBtn.hidden = true; this.animBtn.hidden = true; this.novaBtn.hidden = true; this.pilotBtn.hidden = true; this.foldBtn.hidden = true; this.multiBtn.hidden = true; this.photoBtn.hidden = true; }
     this.root.appendChild(top);
     this.stats = el("div", "cg-stats");
     this.motionNote = el("div", "cg-motion-note");
@@ -195,6 +198,7 @@ export class ConstellationApp {
     this.foldBtn.addEventListener("click", () => this.toggleFold());
     this.multiBtn.addEventListener("click", () => { const open = !this.panel.open; this.panel.setOpen(open); this.multiBtn.setAttribute("aria-expanded", String(open)); });
     this.helpBtn.addEventListener("click", () => this.setHelp(this.help.hidden));
+    this.photoBtn.addEventListener("click", () => void this.savePhoto());
     this.search.addEventListener("input", () => this.runSearch());
     this.search.addEventListener("keydown", e => {
       if (e.key === "Enter") { const first = this.firstMatch(); if (first >= 0) this.selectIndex(first, true); }
@@ -398,6 +402,19 @@ export class ConstellationApp {
     for (const b of [this.animBtn, this.novaBtn]) { b.disabled = off; b.classList.toggle("cg-disabled", off); }
   }
 
+  /** Save the view as a PNG download. It is a download, never a file in your vault, and it holds only the 3D scene. */
+  private async savePhoto(): Promise<void> {
+    const blob = await this.renderer.capture?.();
+    if (!blob) { this.announce("The view could not be saved as an image"); return; }
+    const d = new Date(), pad = (n: number) => String(n).padStart(2, "0");
+    const name = `starfield-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
+    const url = URL.createObjectURL(blob);
+    const a = createEl("a", { attr: { href: url, download: name } });
+    this.root.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    this.announce(`Image saved as ${name}`);
+  }
+
   private toggleFold(): void {
     this.renderer.toggleAllGroups?.();
     const on = !!this.renderer.anyCollapsed;
@@ -544,7 +561,7 @@ export class ConstellationApp {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (this.renderer.pilotActive && e.key !== "p" && e.key !== "P" && e.key !== "?") return; // while flying, the note keys do nothing
+    if (this.renderer.pilotActive && e.key !== "p" && e.key !== "P" && e.key !== "?" && e.key !== "i" && e.key !== "I") return; // while flying, the note keys do nothing
     const sel = this.renderer.selectedIndex;
     const stepOrder = (d: number) => {
       if (!this.order.length) return;
@@ -573,6 +590,7 @@ export class ConstellationApp {
       case "n": case "N": this.renderer.supernova(); break;
       case "p": case "P": this.togglePilot(); break;
       case "g": case "G": this.toggleFold(); break;
+      case "i": case "I": void this.savePhoto(); break;
       case "Escape": if (!this.help.hidden) this.setHelp(false); else this.selectIndex(-1, false); break;
       case "r": case "R": this.renderer.resetView(); break;
       case "l": case "L": this.toggleList(); break;
