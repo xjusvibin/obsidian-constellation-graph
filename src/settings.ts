@@ -11,6 +11,8 @@ export interface ConstellationSettings {
   linkBrightness: number;
   spacing: number;
   checkForUpdates: boolean;
+  rememberView: boolean;
+  savedView: { d: [number, number, number]; z: number } | null;
   updateCheckedAt: number;
   updateNotified: string;
   bloom: boolean;
@@ -55,6 +57,8 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   linkBrightness: 1,
   spacing: 1,
   checkForUpdates: false,
+  rememberView: true,
+  savedView: null,
   updateCheckedAt: 0,
   updateNotified: "",
   bloom: true,
@@ -96,6 +100,16 @@ const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T):
   allowed.includes(v as T) ? (v as T) : fallback;
 const bool = (v: unknown, fallback: boolean): boolean => (typeof v === "boolean" ? v : fallback);
 
+/** A remembered camera: a direction (unit vector, from where you look at to where the camera is) and how far out relative to the framing of the whole graph. */
+function sanitizeView(v: unknown): { d: [number, number, number]; z: number } | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { d?: unknown; z?: unknown };
+  if (!Array.isArray(o.d) || o.d.length !== 3 || !o.d.every(x => typeof x === "number" && isFinite(x) && Math.abs(x) <= 1.01) || typeof o.z !== "number" || !isFinite(o.z)) return null;
+  const len = Math.hypot(o.d[0] as number, o.d[1] as number, o.d[2] as number);
+  if (len < 0.5 || len > 1.5) return null;
+  return { d: [o.d[0] as number / len, o.d[1] as number / len, o.d[2] as number / len], z: Math.min(2, Math.max(0.25, o.z)) };
+}
+
 /** Merge saved data over the defaults, dropping anything the wrong type or out of range (hand-edited or older data.json). */
 export function sanitizeSettings(raw: unknown): ConstellationSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -109,6 +123,8 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     linkBrightness: clamp(r.linkBrightness, 0.3, 2.5, d.linkBrightness),
     spacing: clamp(r.spacing, 0.5, 2.5, d.spacing),
     checkForUpdates: bool(r.checkForUpdates, d.checkForUpdates),
+    rememberView: bool(r.rememberView, d.rememberView),
+    savedView: sanitizeView(r.savedView),
     updateCheckedAt: typeof r.updateCheckedAt === "number" && isFinite(r.updateCheckedAt) ? r.updateCheckedAt : 0,
     updateNotified: typeof r.updateNotified === "string" && /^\d+\.\d+\.\d+$/.test(r.updateNotified) ? r.updateNotified : "",
     bloom: bool(r.bloom, d.bloom),

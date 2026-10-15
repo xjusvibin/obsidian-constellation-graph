@@ -8,8 +8,11 @@ type Control =
   | { kind: "slider"; min: number; max: number; step: number }
   | { kind: "text"; placeholder: string };
 
+/** The settings that are a plain value (a switch, a number, a choice or a text), which is all the settings screen shows. */
+type SettingKey = { [K in keyof ConstellationSettings]: ConstellationSettings[K] extends string | number | boolean ? K : never }[keyof ConstellationSettings];
+
 interface SettingDef {
-  key: keyof ConstellationSettings;
+  key: SettingKey;
   name: string;
   desc?: string;
   control: Control;
@@ -50,6 +53,8 @@ const SECTIONS: Section[] = [
     heading: "Appearance",
     items: [
       { key: "glow", name: "Glow", control: { kind: "slider", min: 0, max: 1.5, step: 0.1 } },
+      { key: "rememberView", name: "Remember the camera", control: { kind: "toggle" },
+        desc: "Open the graph looking the way you left it (the direction and how far in or out), instead of the default view." },
       { key: "nodeSize", name: "Node size", control: { kind: "slider", min: 0.5, max: 2, step: 0.1 },
         desc: "How big the notes are drawn. Lower it if a busy group looks like one white blob." },
       { key: "linkBrightness", name: "Link brightness", control: { kind: "slider", min: 0.3, max: 2.5, step: 0.1 },

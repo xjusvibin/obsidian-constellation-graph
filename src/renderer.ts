@@ -153,6 +153,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private age = 0;
   private frameNo = 0;
   private resumeTimer = 0;
+  private viewTimer = 0;
   private zoomGoal = 0; // the distance from the orbit target the wheel is heading for (0: not zooming)
   private slow = 0;
   private pointer = { x: -1, y: -1, inside: false, moved: false };
@@ -511,6 +512,28 @@ export class ConstellationRenderer implements GraphRenderer {
     this.startTween(to.clone().addScaledVector(dir, 85 + baseRadius(n.deg) * 6), to, 1300);
   }
 
+  /** The first framing: the way the reader left the camera last time if they asked for that, otherwise the whole graph. */
+  private openView(): void {
+    const sv = this.settings.savedView;
+    if (!this.settings.rememberView || !sv) { this.resetView(); return; }
+    this.follow = -1; this.autoFrame = false;
+    const b = this.sim.bounds(), c = new THREE.Vector3(b.cx, b.cy, b.cz);
+    this.startTween(c.clone().addScaledVector(new THREE.Vector3(...sv.d), this.fitDistance(b.radius) * sv.z), c, 1500);
+  }
+
+  /** A moment after the camera stops, tell the app where it is, so the next session can open the same way. */
+  private scheduleViewSave(): void {
+    if (!this.settings.rememberView) return;
+    window.clearTimeout(this.viewTimer);
+    this.viewTimer = window.setTimeout(() => {
+      if (this.pilot.active || this.nova || this.multiplayer || this.tween || !this.fitDone) return;
+      const b = this.sim.bounds(), d = this.camera.position.clone().sub(this.controls.target), len = d.length();
+      if (len < 1) return;
+      const z = Math.min(2, Math.max(0.25, len / this.fitDistance(b.radius))); d.divideScalar(len);
+      this.cb.onView?.({ d: [+d.x.toFixed(3), +d.y.toFixed(3), +d.z.toFixed(3)], z: +z.toFixed(3) });
+    }, 1800);
+  }
+
   resetView(): void {
     if (this.pilot.active) { this.pilot.returnToHub(); return; }
     this.follow = -1; this.autoFrame = true;
@@ -623,7 +646,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.disposeNodes();
     this.stars.geometry.dispose(); (this.stars.material as THREE.Material).dispose();
     // EffectComposer.dispose() does not free its passes, and browsers cap live WebGL contexts
-    this.hole.dispose(); this.bloom.dispose(); this.renderPass.dispose(); this.composer.dispose();
+    window.clearTimeout(this.viewTimer); this.hole.dispose(); this.bloom.dispose(); this.renderPass.dispose(); this.composer.dispose();
     this.renderer.dispose(); this.renderer.forceContextLoss();
     this.canvas.remove(); this.labelLayer.remove(); this.flashEl.remove();
   }
@@ -750,7 +773,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   private onControlStart = () => { window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null; this.autoFrame = false; this.userActive = true; this.updateRotate(); };
   private onControlEnd = () => {
-    this.userActive = false;
+    this.userActive = false; this.scheduleViewSave();
     window.clearTimeout(this.resumeTimer);
     this.rotateBlockedUntil = performance.now() + 3500;
     this.resumeTimer = window.setTimeout(() => this.updateRotate(), 3550);
@@ -1195,7 +1218,7 @@ export class ConstellationRenderer implements GraphRenderer {
   }
 
   private updateCamera(now: number): void {
-    if (!this.fitDone && this.age > 1.8 && this.sim.nodes.length) { this.fitDone = true; this.resetView(); }
+    if (!this.fitDone && this.age > 1.8 && this.sim.nodes.length) { this.fitDone = true; this.openView(); }
     if (this.tween) {
       const t = Math.min(1, (now - this.tween.t0) / this.tween.dur), e = 1 - Math.pow(1 - t, 3);
       if (this.follow >= 0 && this.sim.nodes[this.follow]) { // keep aiming at the node while it drifts

@@ -32,3 +32,14 @@ test("the update check is off by default, and bad saved values fall back", () =>
   assert.equal(s.updateCheckedAt, 0);
   assert.equal(s.updateNotified, "");
 });
+
+test("a remembered camera is kept only when it is sane", () => {
+  const good = u.sanitizeSettings({ savedView: { d: [0.3, 0.4, 0.9], z: 1.2 } }).savedView;
+  assert.ok(Math.abs(Math.hypot(...good.d) - 1) < 1e-9 && good.z === 1.2, "the direction is normalised");
+  assert.equal(u.sanitizeSettings({ savedView: { d: [0, 0, 2], z: 1 } }).savedView, null, "not a direction");
+  assert.equal(u.sanitizeSettings({ savedView: { d: [0, 0, 0], z: 1 } }).savedView, null);
+  assert.equal(u.sanitizeSettings({ savedView: { d: [1, "x", 0], z: 1 } }).savedView, null);
+  assert.equal(u.sanitizeSettings({ savedView: { d: [0, 0, 1], z: 99 } }).savedView.z, 2, "the distance is limited");
+  assert.equal(u.sanitizeSettings({}).savedView, null);
+  assert.equal(u.sanitizeSettings({}).rememberView, true);
+});

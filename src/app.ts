@@ -96,6 +96,7 @@ export class ConstellationApp {
       onNetworkShot: shot => this.session.sendShot(shot),
       onNetworkHit: (shooter, shotId, at) => this.session.sendHit({ shooter, target: this.session.selfId, shotId, at }),
       onNetworkKill: killer => { this.session.sendKill(killer); this.onKill(this.session.selfId, killer); },
+      onView: v => this.host.updateSettings?.({ savedView: v }),
       onNetworkMissile: m => this.session.sendMissile(m),
       onNetworkBurst: b => this.session.sendBurst(b),
       onNetworkGrab: id => this.session.sendGrab(id),

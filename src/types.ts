@@ -66,6 +66,8 @@ export interface RendererCallbacks {
   /** Multiplayer: your ship's pose (about twenty times a second), a bolt you fired, and a bolt that hit you. */
   onNetworkPose?(pose: Pose): void;
   onNetworkShot?(shot: ShotMsg): void;
+  /** The reader moved the camera and let go: where it points, to remember for next time. */
+  onView?(view: { d: [number, number, number]; z: number }): void;
   onNetworkHit?(shooterId: string, shotId: string, at: [number, number, number]): void;
   /** You were destroyed by this pilot's bolt. */
   onNetworkKill?(killerId: string | null): void;
