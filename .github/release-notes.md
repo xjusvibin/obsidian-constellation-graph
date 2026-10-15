@@ -1,3 +1,12 @@
+**0.7.0: rounds, tours, controller support and ship colours.**
+
+- **Rounds:** the host can start a round from the Fly together panel: first to 5 or 10 kills, or the most kills in 3 or 5 minutes. Scores start again, a status bar shows at the top and a banner names the winner. Only the host's start is accepted.
+- **Respawn away from the fight:** you come back at the one of four spots around your constellation that is farthest from the other pilots.
+- **Ship colours:** pick one of nine; other pilots see it.
+- **Tours:** press O (or run "Tour the linked notes") and the camera visits a chain of linked notes, a few seconds at each. Touching the camera ends it.
+- **Controller support:** a game controller works with the standard layout and no setup (sticks move and look, triggers fire and brake, bumpers for afterburner and missile).
+- **Remember the camera:** an optional setting (off by default) that opens the graph from the angle you left it.
+
 **Starfield Graph** (formerly Constellation Graph). Same plugin and same id, so your settings and updates carry over; the new name says what it has become.
 
 Pilot mode becomes a sandbox, and you can now fly together.
