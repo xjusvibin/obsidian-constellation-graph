@@ -6,6 +6,8 @@ Pilot mode becomes a sandbox, and you can now fly together.
 
 **Lock-on:** the T key now locks the pilot in front of your crosshair (it used to lock a note, which did nothing useful). Your missiles home on a locked pilot, turning only so fast so a boosting pilot can still dodge, and the lead pip follows them.
 
+**Lobby browser:** a Browse rooms button lists rooms whose hosts have chosen to list them publicly (off by default, with a clear warning), and hosts can remove a pilot. It uses one public topic on the relay, so there is still no server, and every announcement from a stranger is checked, cleaned, rate limited and capped.
+
 **Invite links:** the Fly together panel has a Copy invite link button. Opening the link starts Obsidian with the room code filled in; your friend still presses Join.
 
 **Black hole:** the Supernova is now a physical black hole. Gravity pulls every note in on a spiral, a horizon grows as it feeds, and you see an accretion disk, a lensed ring of light, orbiting gas and the background bending around it; then it lets go and the layout re-forms.

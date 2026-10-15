@@ -188,6 +188,11 @@ export class ConstellationApp {
       create: async name => { await this.session.create(name); },
       join: (code, name) => this.session.join(code, name),
       leave: () => this.session.leave(),
+      isHost: () => this.session.isHost,
+      isListed: () => this.session.listed,
+      setListed: on => { this.session.setListed(on); this.refreshPanel(); },
+      kick: id => this.session.kick(id),
+      browse: (onRooms, onProblem) => this.session.browse(onRooms, onProblem),
     }, () => this.closePanel());
     this.live = el("div", "cg-sr", { "aria-live": "polite", "aria-atomic": "true", role: "status" });
     this.root.appendChild(this.live);

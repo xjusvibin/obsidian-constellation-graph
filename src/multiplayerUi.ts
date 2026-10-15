@@ -1,6 +1,7 @@
 import type { RoomMember } from "./room";
 import type { LinkState } from "./multiplayer";
 import { formatRoomCode, inviteLink, parseRoomCode } from "./netcrypto";
+import type { Listing } from "./lobby";
 import { SLOT_COLORS } from "./remote";
 
 export interface PanelHost {
@@ -11,6 +12,12 @@ export interface PanelHost {
   create(name: string): Promise<void>;
   join(code: string, name: string): Promise<void>;
   leave(): void;
+  isHost(): boolean;
+  isListed(): boolean;
+  setListed(on: boolean): void;
+  kick(id: string): void;
+  /** Watch the public board of listed rooms; returns the function that stops watching. */
+  browse(onRooms: (rooms: Listing[]) => void, onProblem: (text: string) => void): () => void;
 }
 
 export interface PanelState {
@@ -39,6 +46,13 @@ export class MultiplayerPanel {
   private list: HTMLUListElement;
   private statusEl: HTMLDivElement;
   private helpEl: HTMLDetailsElement;
+  private browseBtn: HTMLButtonElement;
+  private browseEl: HTMLDivElement;
+  private browseList: HTMLUListElement;
+  private browseNote: HTMLDivElement;
+  private stopBrowse: (() => void) | null = null;
+  private listLabel: HTMLLabelElement;
+  private listBox: HTMLInputElement;
   private makeBtn: HTMLButtonElement;
   private joinBtn: HTMLButtonElement;
   private busy = false;
@@ -72,7 +86,9 @@ export class MultiplayerPanel {
     this.makeBtn = createEl("button", { cls: "cg-btn", text: "Make a room", attr: { type: "button" } });
     this.codeInput = createEl("input", { cls: "cg-multiplayer-code", attr: { type: "text", placeholder: "Room code", "aria-label": "Room code", maxlength: "14", autocomplete: "off", spellcheck: "false" } });
     this.joinBtn = createEl("button", { cls: "cg-btn", text: "Join", attr: { type: "button" } });
-    this.startRow.append(this.makeBtn, this.codeInput, this.joinBtn);
+    this.browseBtn = createEl("button", { cls: "cg-btn", text: "Browse rooms", attr: { type: "button", title: "See rooms whose hosts have listed them publicly" } });
+    this.startRow.append(this.makeBtn, this.codeInput, this.joinBtn, this.browseBtn);
+    this.browseBtn.addEventListener("click", () => this.toggleBrowse());
     this.makeBtn.addEventListener("click", () => void this.run(() => this.host.create(this.name())));
     this.joinBtn.addEventListener("click", () => this.tryJoin());
     this.codeInput.addEventListener("keydown", e => { if (e.key === "Enter") this.tryJoin(); e.stopPropagation(); });
@@ -89,6 +105,21 @@ export class MultiplayerPanel {
     leave.addEventListener("click", () => this.host.leave());
     this.roomRow.hidden = true;
 
+    // the public board: rooms looking for pilots (only shown while you ask for it)
+    this.browseEl = this.el.createDiv({ cls: "cg-lobby" });
+    this.browseEl.hidden = true;
+    this.browseEl.createEl("strong", { text: "Rooms looking for pilots" });
+    this.browseNote = this.browseEl.createDiv({ cls: "cg-lobby-note", text: "Listening for rooms…" });
+    this.browseList = this.browseEl.createEl("ul", { cls: "cg-lobby-list" });
+    this.browseEl.createDiv({ cls: "cg-lobby-note", text: "A listed room is public: anyone can join it, and sees the host's network address as in any room. Names and codes come from strangers, so treat them that way." });
+
+    // the host can put the room on the board
+    this.listLabel = this.el.createEl("label", { cls: "cg-lobby-list-opt" });
+    this.listBox = createEl("input", { attr: { type: "checkbox" } });
+    this.listLabel.append(this.listBox, createEl("span", { text: " List this room publicly (anyone can find and join it)" }));
+    this.listLabel.hidden = true;
+    this.listBox.addEventListener("change", () => this.host.setListed(this.listBox.checked));
+
     this.list = this.el.createEl("ul", { cls: "cg-multiplayer-players" });
     this.statusEl = this.el.createDiv({ cls: "cg-multiplayer-status", attr: { role: "status", "aria-live": "polite" } });
     // shown only after something goes wrong: the usual reasons, in the order worth checking
@@ -102,6 +133,31 @@ export class MultiplayerPanel {
       "If you joined but the link stays on \"connecting\", one of your networks is blocking direct connections (common with VPNs and strict routers). Turn the VPN off, or add a TURN server in the Multiplayer settings.",
       "The free relay has usage limits. If it says it is limiting requests, wait a minute and try again.",
     ]) tips.createEl("li", { text: t });
+  }
+
+  private toggleBrowse(): void {
+    if (this.stopBrowse) { this.endBrowse(); return; }
+    this.browseEl.hidden = false; this.browseBtn.textContent = "Hide rooms";
+    this.browseNote.textContent = "Listening for rooms…"; this.browseList.replaceChildren();
+    this.stopBrowse = this.host.browse(rooms => this.showRooms(rooms), text => { this.browseNote.textContent = text; });
+  }
+
+  private endBrowse(): void {
+    this.stopBrowse?.(); this.stopBrowse = null;
+    this.browseEl.hidden = true; this.browseBtn.textContent = "Browse rooms";
+  }
+
+  private showRooms(rooms: Listing[]): void {
+    this.browseNote.textContent = rooms.length ? "" : "No rooms are listed right now. Make one and list it, or share a code with friends.";
+    this.browseList.replaceChildren();
+    for (const r of rooms) {
+      const li = this.browseList.createEl("li");
+      li.createSpan({ cls: "cg-lobby-name", text: r.name });
+      li.createSpan({ cls: "cg-lobby-count", text: `${r.pilots}/4` });
+      const join = createEl("button", { cls: "cg-btn", text: "Join", attr: { type: "button", "aria-label": `Join ${r.name}` } });
+      join.addEventListener("click", () => this.prefillJoin(r.code));
+      li.appendChild(join);
+    }
   }
 
   private name(): string { return this.nameInput.value.trim() || "Pilot"; }
@@ -129,11 +185,12 @@ export class MultiplayerPanel {
     this.setOpen(true);
     this.codeInput.value = formatRoomCode(code);
     this.joinBtn.focus({ preventScroll: true });
-    this.say("Room code filled in from the invite link. Press Join to enter the room.", false);
+    this.say("Room code filled in. Press Join to enter the room.", false);
   }
 
   setOpen(open: boolean): void {
     this.el.hidden = !open;
+    if (!open) this.endBrowse();
     if (open) { this.nameInput.value = this.host.name(); this.shipSelect.value = this.host.ship(); (this.code ? this.el : this.nameInput).focus?.({ preventScroll: true }); }
   }
   get open(): boolean { return !this.el.hidden; }
@@ -142,6 +199,9 @@ export class MultiplayerPanel {
     this.code = s.code;
     const inRoom = !!s.code && s.members.some(m => m.id === s.selfId);
     this.startRow.hidden = inRoom; this.roomRow.hidden = !inRoom;
+    if (inRoom) this.endBrowse();
+    const host = inRoom && this.host.isHost();
+    this.listLabel.hidden = !host; this.listBox.checked = host && this.host.isListed();
     this.codeText.textContent = inRoom ? formatRoomCode(s.code) : "";
     this.list.replaceChildren();
     for (const m of s.members) {
@@ -158,6 +218,11 @@ export class MultiplayerPanel {
       li.createSpan({ cls: `cg-player-ping cg-ping-${quality}`, text: m.id === s.selfId || rtt === undefined ? "" : `${rtt} ms`, attr: { title: "Round-trip time to this pilot. Under 80 ms feels instant; over 160 ms makes shots feel late." } });
       const link = m.id === s.selfId ? "here" : s.link.get(m.id) ?? "connecting";
       li.createSpan({ cls: "cg-player-state", text: link === "connected" ? (h && !h.flying ? "docked" : "flying") : link === "here" ? (h?.flying === false ? "docked" : "here") : link === "lost" ? "lost" : "connecting…" });
+      if (host && m.id !== s.selfId) {
+        const kick = createEl("button", { cls: "cg-btn cg-kick", text: "Remove", attr: { type: "button", "aria-label": `Remove ${m.name} from the room` } });
+        kick.addEventListener("click", () => this.host.kick(m.id));
+        li.appendChild(kick);
+      }
     }
     if (s.status) this.say(s.status, s.error);
   }

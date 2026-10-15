@@ -12,6 +12,7 @@
  * Never: note titles, paths, tags or contents.
  */
 
+import { LobbyBrowser, LobbyPublisher, type Listing } from "./lobby";
 import { validBurst, validGrab, validMissile, type BurstMsg, type MissileMsg } from "./powerups";
 import type { GraphData, RawNode, SimNode } from "./types";
 import { RelayRoom, type RoomMember, type TransportFactory } from "./room";
@@ -187,6 +188,7 @@ export class MultiplayerSession {
   private revision = 0;
   private pumpTimer = 0;
   private pingTimer = 0;
+  private publisher: LobbyPublisher | null = null;
   private pingSeq = 0;
   private poseSequence = 0;
   private closed = true;
@@ -202,6 +204,38 @@ export class MultiplayerSession {
   get code(): string { return this.room?.code ?? ""; }
   get selfId(): string { return this.room?.selfId ?? ""; }
   get members(): RoomMember[] { return this.roster; }
+
+  /** The pilot who has been in the room longest: the one who answers newcomers, and the only one who can remove a pilot. */
+  private hostId(): string { return this.roster.reduce<RoomMember | null>((a, m) => (!a || m.joinedAt < a.joinedAt ? m : a), null)?.id ?? ""; }
+  get isHost(): boolean { return this.active && this.hostId() === this.selfId; }
+
+  /** Is this room on the public board? */
+  get listed(): boolean { return !!this.publisher; }
+
+  /** Put the room on the public board (anyone can then find its code and join), or take it off. Only the host can. */
+  setListed(on: boolean): void {
+    this.publisher?.stop(); this.publisher = null;
+    const o = this.options();
+    if (!on || !this.isHost || !o.post) return;
+    this.publisher = new LobbyPublisher(o.relayUrl, o.post, () => {
+      if (!this.active || !this.roster.length || !this.isHost) return null;
+      const host = this.roster.find(m => m.id === this.selfId);
+      return { code: this.code, name: `${host?.name ?? "Pilot"}'s room`.slice(0, 24), pilots: this.roster.length };
+    });
+    this.publisher.start();
+  }
+
+  /** Watch the public board. Returns the function that stops watching. */
+  browse(onRooms: (rooms: Listing[]) => void, onProblem: (text: string) => void): () => void {
+    const o = this.options();
+    if (!o.post) { onProblem("Network access is not available here."); return () => undefined; }
+    const b = new LobbyBrowser(o.relayUrl, o.post, () => this.code, onRooms, onProblem);
+    b.start();
+    return () => b.stop();
+  }
+
+  /** The host removes a pilot from the room. They can come back with the code (a listed room is public), so this is not a ban. */
+  kick(id: string): void { if (this.isHost && id !== this.selfId) this.sendTo(id, { t: "kick" }); }
   get slot(): number { return this.roster.find(m => m.id === this.selfId)?.slot ?? 0; }
 
   async create(name: string): Promise<string> {
@@ -362,6 +396,7 @@ export class MultiplayerSession {
     }
     if (m.t === "shot" && validShot(m.shot)) { this.cb.shot(id, m.shot); return; }
     if (m.t === "hit" && validHit(m.hit, this.selfId) && m.hit.target === id) { this.cb.hit(id, m.hit); return; }
+    if (m.t === "kick") { if (this.hostId() === id) this.leave("You were removed from the room by its host."); return; }
     if (m.t === "missile" && validMissile(m.missile)) { this.cb.missile(id, m.missile); return; }
     if (m.t === "burst" && validBurst(m.burst)) { this.cb.burst(id, m.burst); return; }
     if (m.t === "grab" && validGrab(m.id)) { this.cb.grab(id, m.id); return; }
@@ -511,6 +546,7 @@ export class MultiplayerSession {
     this.closed = true;
     window.clearInterval(this.pumpTimer); this.pumpTimer = 0;
     window.clearInterval(this.pingTimer); this.pingTimer = 0;
+    this.publisher?.stop(); this.publisher = null;
     for (const id of [...this.peers.keys()]) { this.removePeer(id); this.cb.removed(id); }
     this.room?.leave(); this.room = null;
     this.roster = []; this.topology = null; this.ids.clear(); this.revision = 0; this.poseSequence = 0;

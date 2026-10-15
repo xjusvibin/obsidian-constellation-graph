@@ -218,7 +218,7 @@
 .cg-multiplayer-code { width: 130px; font-family: monospace; text-transform: uppercase; }
 .cg-multiplayer-codeshow { font-family: monospace; font-size: 16px; letter-spacing: 0.08em; margin-right: 4px; user-select: all; }
 .cg-multiplayer-players { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
-.cg-multiplayer-players li { display: grid; grid-template-columns: 12px minmax(60px, 1fr) 72px auto 46px auto; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 12px; }
+.cg-multiplayer-players li { display: grid; grid-template-columns: 12px minmax(60px, 1fr) 72px auto 46px auto auto; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 12px; }
 .cg-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cg-player-health { width: 72px; height: 8px; accent-color: #ff6c73; }
 .cg-player-state { color: var(--cg-dim); white-space: nowrap; }
@@ -294,3 +294,16 @@
 .cg-multiplayer-help[hidden] { display: none; }
 .cg-multiplayer-help summary { cursor: pointer; color: var(--cg-ink); }
 .cg-multiplayer-help ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+
+/* Multiplayer: the public board of rooms */
+.cg-lobby { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 12px; }
+.cg-lobby[hidden] { display: none; }
+.cg-lobby-note { margin: 6px 0; color: var(--cg-dim); font-size: 11px; }
+.cg-lobby-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cg-lobby-list li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; }
+.cg-lobby-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-lobby-count { color: var(--cg-dim); font-variant-numeric: tabular-nums; }
+.cg-lobby-list .cg-btn { width: auto; min-width: 48px; padding: 0 9px; height: 26px; font-size: 12px; }
+.cg-lobby-list-opt { display: flex; align-items: center; gap: 6px; margin: 8px 0 2px; font-size: 12px; color: var(--cg-ink); }
+.cg-lobby-list-opt[hidden] { display: none; }
+.cg-kick { width: auto; min-width: 0; height: 22px; padding: 0 7px; font-size: 11px; }
