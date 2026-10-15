@@ -1,6 +1,6 @@
 {
   "name": "constellation-graph",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A fluid, orbiting 3D constellation of your notes for Obsidian.",
   "main": "main.js",
   "private": true,
