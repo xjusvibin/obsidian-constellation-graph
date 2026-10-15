@@ -108,7 +108,10 @@ const SECTIONS: Section[] = [
         desc: "Glowing plane outline, target brackets, impact bursts and faint shells around each group." },
       { key: "pilotSound", name: "Sound effects", control: { kind: "toggle" },
         desc: "Engine, blasters and warp, made on the fly. Nothing plays unless you are flying." },
-      { key: "pilotVolume", name: "Volume", control: { kind: "slider", min: 0, max: 1, step: 0.05 } },
+      { key: "pilotVolume", name: "Volume", control: { kind: "slider", min: 0, max: 1, step: 0.05 },
+        desc: "While you fly, the minus and equals keys turn it down and up." },
+      { key: "pilotDrones", name: "Practice drones", control: { kind: "toggle" },
+        desc: "When you fly alone, a few target drones circle your graph to shoot at, in waves. They are off in a room." },
     ],
   },
   {

@@ -77,6 +77,8 @@ export interface RendererCallbacks {
   onNetworkMissile?(missile: MissileMsg): void;
   onNetworkBurst?(burst: BurstMsg): void;
   onNetworkGrab?(pickup: number): void;
+  /** The pilot changed the volume with the keys; save it. */
+  onVolume?(volume: number): void;
   /** The scoreboard key went down (true) or up (false). */
   onScores?(on: boolean): void;
 }

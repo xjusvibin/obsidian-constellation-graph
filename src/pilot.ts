@@ -7,8 +7,9 @@ import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
 import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
+import { DroneField } from "./drones";
 import { padName, pickPad, readPad, type PadInput } from "./gamepad";
-import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
+import { AMMO_MAX, BLASTER, BOLT_REACH, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
 export interface PilotHost {
@@ -42,6 +43,8 @@ export interface PilotHost {
   onState(active: boolean, text: string): void;
   /** The reader pressed Esc with the mouse already free: leave Pilot mode. */
   leave(): void;
+  /** The volume was changed with the keys (0 to 1); remember it. */
+  setVolume(volume: number): void;
   /** Multiplayer: your ship's pose (about twenty times a second), and a bolt you have fired. */
   onNetworkPose(pose: Pose): void;
   onNetworkShot(shot: ShotMsg): void;
@@ -70,6 +73,8 @@ export interface PilotOptions {
   speed: number;
   /** Capture: the mouse is locked and its movement steers. Cursor: the pointer stays visible and its distance from the centre steers. */
   mouse: "capture" | "cursor";
+  /** Flying alone: practice drones circle the constellation to shoot at. */
+  drones: boolean;
   /** In a room: everyone flies the same ship (fixed speed), there is no warping, and ships can be shot down. */
   multiplayer: boolean;
 }
@@ -145,7 +150,7 @@ const Z_AXIS = new THREE.Vector3(0, 0, 1);
 /** Keys the pilot owns. Anything else (Enter, /, ?, L, ...) is left to the normal keyboard handling. */
 const OWNED = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyC", "KeyQ", "KeyE", "ShiftLeft", "ShiftRight",
-  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "KeyM", "Tab",
+  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "KeyM", "Tab", "Minus", "Equal", "NumpadSubtract", "NumpadAdd",
 ]);
 
 type KeyRow = { caps: string[]; label: string | ((p: PilotController) => string); codes: (string | null)[] };
@@ -172,6 +177,7 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["V"], label: "Chase / cockpit", codes: ["KeyV"] },
     { caps: ["N"], label: "Watch other pilots", codes: ["KeyN"] },
     { caps: ["Tab"], label: p => p.multiplayer ? "Scoreboard (hold)" : "Scoreboard (in a room)", codes: ["Tab"] },
+    { caps: ["-", "="], label: "Volume down / up", codes: ["Minus", "Equal"] },
     { caps: ["K"], label: "Show / hide this", codes: ["KeyK"] },
     { caps: ["Esc"], label: p => p.cursorMode ? "Leave" : "Free the mouse", codes: [null] },
     { caps: ["P"], label: "Leave Pilot mode", codes: [null] },
@@ -238,6 +244,7 @@ export class PilotController {
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
   private pad: PadInput = readPad(null);        // the game controller, if one is plugged in
+  private droneText = "";
   private padUsed = false;
   private padHeld = new Set<string>();           // buttons already counted, so a held button is one press
   private died = false;
@@ -279,6 +286,8 @@ export class PilotController {
   private fx: SpeedFx;
   private fov = 55;
   private boostFx: HTMLDivElement;
+  private drones: DroneField;                // practice targets when flying alone
+  private droneChip: HTMLDivElement;
   private padChip: HTMLDivElement;             // the controller readout: its name, lit while you press it
   private padChipText = "";
   private boltLines: THREE.LineSegments;
@@ -367,6 +376,8 @@ export class PilotController {
     this.hud.hidden = true;
     this.boostFx = this.hud.createDiv({ cls: "cg-pilot-boostfx" });
     this.padChip = this.hud.createDiv({ cls: "cg-pilot-pad cg-hidden" });
+    this.droneChip = this.hud.createDiv({ cls: "cg-pilot-drones cg-hidden" });
+    this.drones = new DroneField(this.scene);
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
     this.ringInner = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-inner" });
     this.cross = this.hud.createDiv({ cls: "cg-pilot-cross" });
@@ -522,6 +533,8 @@ export class PilotController {
     if (this.chase) this.pos.sub(this.tmpV.copy(CAM_OFFSET).applyQuaternion(this.quat));
     if (this.opts.multiplayer) { this.health = 100; this.protectedUntil = PROTECT_MS; this.placeAtSpawn(); } // in a room you start at home
 
+    if (!this.opts.multiplayer && this.opts.drones) { const b = this.host.bounds(); this.drones.start([b.cx, b.cy, b.cz], b.radius, this.cruise); this.showDrones(true); }
+
     this.container.classList.add("cg-piloting");
     this.hud.hidden = false;
     this.boltLines.visible = true;
@@ -572,6 +585,7 @@ export class PilotController {
     window.removeEventListener("focus", this.onWindowFocus);
     if (this.locked) document.exitPointerLock();
     this.audio.stop();
+    this.drones.stop(); this.droneChip.classList.add("cg-hidden");
     this.keys.clear(); this.firing = false; this.warp = null; this.bolts.length = 0;
     for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down");
     for (const b of this.bursts) b.line.visible = false;
@@ -596,7 +610,7 @@ export class PilotController {
       (l.material as THREE.Material | undefined)?.dispose?.();
     };
     this.scene.remove(this.cockpit.group); this.cockpit.dispose();
-    this.fx.dispose();
+    this.fx.dispose(); this.drones.dispose();
     this.scene.remove(this.ship.group);
     this.ship.lights.forEach(l => this.scene.remove(l));
     this.ship.dispose();
@@ -691,6 +705,8 @@ export class PilotController {
     this.lightKey(e.code, true);
     switch (e.code) {
       case "KeyK": this.showKeys(!this.keysShown); break;
+      case "Minus": case "NumpadSubtract": this.changeVolume(-0.1); break;
+      case "Equal": case "NumpadAdd": this.changeVolume(0.1); break;
       case "KeyT": this.toggleLock(); break;
       case "KeyG": {
         const t = this.aim;
@@ -714,6 +730,21 @@ export class PilotController {
     const text = name ? `Controller: ${name}${this.padUsed ? "" : " (press any button)"}` : "";
     if (text !== this.padChipText) { this.padChipText = text; this.padChip.textContent = text; this.padChip.classList.toggle("cg-hidden", !text); }
     this.padChip.classList.toggle("cg-on", active);
+  }
+
+  /** The practice-drone readout at the top of the view: the wave, how many are left, and your total. */
+  private showDrones(force = false): void {
+    const d = this.drones.info, text = d.total ? (d.alive ? `Wave ${d.wave}: ${d.alive} of ${d.total} drones left` : `Wave ${d.wave} cleared`) + ` · ${d.kills} down` : "";
+    if (force || text !== this.droneText) { this.droneText = text; this.droneChip.textContent = text; this.droneChip.classList.toggle("cg-hidden", !text); }
+  }
+
+  /** The - and = keys: the volume moves in steps of ten percent, is saved, and is read out. */
+  private changeVolume(delta: number): void {
+    const v = clamp(Math.round((this.opts.volume + delta) * 20) / 20, 0, 1);
+    this.opts = { ...this.opts, volume: v };
+    this.audio.setOptions(this.opts.sound, v);
+    this.host.setVolume(v);
+    this.host.onState(true, this.opts.sound ? `Volume ${Math.round(v * 100)} percent` : "Sound is turned off in the settings");
   }
 
   private switchWeapon(): void { this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); }
@@ -874,6 +905,10 @@ export class PilotController {
 
     if (this.frame % 2 === 0) this.updateAim();
     this.updateBolts(dt);
+    if (this.drones.active) {
+      if (this.drones.update(dt, this.clock)) { this.showDrones(true); this.host.onState(true, `Wave ${this.drones.info.wave}: ${this.drones.info.total} drones`); }
+      else if (this.frame % 8 === 0) this.showDrones();
+    }
     this.updateWireframes(dt);
     this.updateHud(speed / (this.cruise * BOOST_TOP));
     if (this.opts.multiplayer) { // tell the others where you are, about twenty times a second
@@ -1187,14 +1222,29 @@ export class PilotController {
       this.cooldown = FIRE_GAP; this.heat += HEAT_PER_SHOT;
       if (this.heat >= 1) { this.heat = 1; this.overheated = true; this.audio.overheat(); this.host.onState(true, "Blaster overheated"); }
     }
-    const cl = this.host.pickClusterAt(this.aimX, this.aimY, FIRE_SLACK);
-    const i = cl >= 0 ? -1 : this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
-    const point = new THREE.Vector3(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
+    let cl = this.host.pickClusterAt(this.aimX, this.aimY, FIRE_SLACK);
+    let i = cl >= 0 ? -1 : this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
+    let point = new THREE.Vector3(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
     // guns fire in a rotating pattern: upper-left, lower-right, upper-right, lower-left
     const order = [0, 3, 1, 2], gun = order[this.gun++ % 4];
     if (this.bolts.length >= MAX_BOLTS) this.bolts.shift();
     const from = this.muzzle(gun, new THREE.Vector3());
     const kind: 0 | 1 = cannon ? 1 : 0;
+    if (this.drones.active) { // a practice drone in the line of fire takes the hit, if it is nearer than whatever you were aiming at
+      const n = i >= 0 ? this.host.nodes()[i] : null, to = n ? this.hitA.set(n.x, n.y, n.z) : point;
+      const dir = this.hitB.copy(to).sub(from), reach = Math.min(BOLT_REACH, dir.length());
+      const hit = this.drones.trace(from, dir.normalize(), reach);
+      if (hit) {
+        point = hit.point; i = -1; cl = -1;
+        this.hitConfirmed();
+        if (this.drones.damage(hit.index, damageAt(kind, hit.dist))) {
+          this.spawnBurstAt(hit.point.x, hit.point.y, hit.point.z, 9); this.audio.pickup();
+          const left = this.drones.info.alive;
+          this.host.onState(true, left ? `Drone down. ${left} left` : `Wave ${this.drones.info.wave} cleared`);
+        }
+        this.showDrones();
+      }
+    }
     const boost = this.vel.length(); // the bolt keeps the speed your ship had when it left the gun
     this.bolts.push({ from, node: i, cluster: cl, point, kind, boost, travelled: 0, landed: false, fade: 0 });
     if (cannon) this.audio.cannon(gun); else this.audio.laser(gun);
