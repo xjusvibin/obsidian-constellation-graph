@@ -27,7 +27,7 @@ export function readPad(p: PadLike | null | undefined): PadInput {
   const thrust = -deadzone(p.axes[1] ?? 0), strafe = deadzone(p.axes[0] ?? 0);
   const lookX = deadzone(p.axes[2] ?? 0), lookY = deadzone(p.axes[3] ?? 0);
   const lift = (down(p, 0) ? 1 : 0) - (down(p, 1) ? 1 : 0);
-  const roll = (down(p, 15) ? 1 : 0) - (down(p, 14) ? 1 : 0);
+  const roll = (down(p, 14) ? 1 : 0) - (down(p, 15) ? 1 : 0); // d-pad left is roll left (the Q key), right is roll right (E)
   // the usual shooter layout: right trigger fires, left trigger is the secondary weapon (missile), bumpers and stick clicks are movement modifiers
   const fire = trig(p, 7), missile = trig(p, 6), boost = down(p, 5) || down(p, 10), brake = down(p, 4);
   const weapon = down(p, 2), lock = down(p, 3), view = down(p, 12), hub = down(p, 13), scores = down(p, 8);

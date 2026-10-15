@@ -22,7 +22,8 @@ test("left stick up is thrust, right is strafe", () => {
 test("buttons map to fire, boost, brake, missile, lift and roll", () => {
   const r = m.readPad(pad([0, 0, 0, 0], [7, 5, 6, 4, 0, 14, 2, 3]));
   assert.ok(r.fire && r.boost && r.brake && r.missile && r.weapon && r.lock);
-  assert.equal(r.lift, 1); assert.equal(r.roll, -1);
+  assert.equal(r.lift, 1); assert.equal(r.roll, 1); // button 14 is d-pad left: roll left, like Q
+  assert.equal(m.readPad(pad([0, 0, 0, 0], [15])).roll, -1);
 });
 test("pickPad prefers a controller that is being used", () => {
   const idle = pad(), used = pad([0, 0, 0, 0], [7]);
