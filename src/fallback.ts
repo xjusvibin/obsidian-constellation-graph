@@ -43,6 +43,7 @@ export class FallbackRenderer implements GraphRenderer {
   resetView(): void { /* no camera */ }
   animate(): void { /* nothing to draw */ }
   supernova(): void { /* nothing to draw */ }
+  tour(): void { /* nothing to draw */ }
   get activity(): null { return null; }
   get canShow(): boolean { return false; }
   get canPilot(): boolean { return false; }

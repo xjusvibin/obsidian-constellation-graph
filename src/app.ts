@@ -489,6 +489,7 @@ export class ConstellationApp {
   }
 
   /** An invite link was opened: show the Fly together panel with the code filled in. */
+  tour(): void { this.renderer.tour(); }
   openJoin(code: string): void { this.panel.prefillJoin(code); this.multiBtn.setAttribute("aria-expanded", "true"); this.announce("Room code filled in. Press Join."); }
 
   private toggleFold(): void {
@@ -664,6 +665,7 @@ export class ConstellationApp {
       case " ": this.togglePause(); break;
       case "a": case "A": this.renderer.animate(); break;
       case "n": case "N": this.renderer.supernova(); break;
+      case "o": case "O": this.renderer.tour(); break;
       case "p": case "P": this.togglePilot(); break;
       case "g": case "G": this.toggleFold(); break;
       case "i": case "I": void this.savePhoto(); break;

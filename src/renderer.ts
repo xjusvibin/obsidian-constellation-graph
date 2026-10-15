@@ -10,6 +10,7 @@ import { Simulation } from "./sim";
 import { PilotController } from "./pilot";
 import { RemoteWorld, WORLD_ORIGINS } from "./remote";
 import type { AnonymousTopology, HitMsg, Pose, ShotMsg } from "./multiplayer";
+import { busiestNote, planTour } from "./tour";
 import type { GraphData, GraphRenderer, RendererCallbacks, SimNode } from "./types";
 import { ConstellationSettings, effectiveAutoRotate, effectiveHighContrast, effectiveMotion, prefersReducedMotion } from "./settings";
 
@@ -163,6 +164,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private ray = new THREE.Raycaster();
   private hit = new THREE.Vector3();
   private tween: Tween | null = null;
+  private tourTimer = 0;
   private ro: ResizeObserver;
   private io: IntersectionObserver;
   private tmp = new THREE.Vector3();
@@ -512,6 +514,28 @@ export class ConstellationRenderer implements GraphRenderer {
     this.startTween(to.clone().addScaledVector(dir, 85 + baseRadius(n.deg) * 6), to, 1300);
   }
 
+  /** A tour: the camera visits a chain of linked notes, a few seconds at each. Touching the camera, or calling this again, ends it. */
+  tour(): void {
+    if (this.tourTimer) { this.tourStop(false); return; }
+    if (this.pilot.active || this.multiplayer || this.nova || !this.sim.nodes.length) return;
+    const start = this.selected >= 0 ? this.selected : busiestNote(this.adj);
+    const stops = planTour(this.adj, start);
+    if (stops.length < 2) { this.cb.onActivity?.(null, "This note has no links to follow"); return; }
+    let at = 0;
+    const step = () => {
+      const i = stops[at]; this.setSelected(i, false); this.cb.onSelect(i); this.flyTo(i);
+      this.cb.onActivity?.(null, `Tour: ${this.sim.nodes[i]?.name ?? ""} (${at + 1} of ${stops.length})`);
+      if (++at >= stops.length) { window.clearInterval(this.tourTimer); this.tourTimer = window.setTimeout(() => this.tourStop(false), 3200); }
+    };
+    step(); this.tourTimer = window.setInterval(step, 3600);
+  }
+
+  private tourStop(byUser: boolean): void {
+    if (!this.tourTimer) return;
+    window.clearInterval(this.tourTimer); window.clearTimeout(this.tourTimer); this.tourTimer = 0;
+    this.cb.onActivity?.(null, byUser ? "" : "Tour finished");
+  }
+
   /** The first framing: the way the reader left the camera last time if they asked for that, otherwise the whole graph. */
   private openView(): void {
     const sv = this.settings.savedView;
@@ -630,6 +654,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   destroy(): void {
     window.cancelAnimationFrame(this.raf);
+    window.clearInterval(this.tourTimer); window.clearTimeout(this.tourTimer);
     window.clearTimeout(this.resumeTimer);
     this.ro.disconnect(); this.io.disconnect();
     this.controls.removeEventListener("start", this.onControlStart);
@@ -771,7 +796,7 @@ export class ConstellationRenderer implements GraphRenderer {
     return true;
   }
 
-  private onControlStart = () => { window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null; this.autoFrame = false; this.userActive = true; this.updateRotate(); };
+  private onControlStart = () => { this.tourStop(true); window.clearTimeout(this.resumeTimer); this.controls.autoRotate = false; this.tween = null; this.autoFrame = false; this.userActive = true; this.updateRotate(); };
   private onControlEnd = () => {
     this.userActive = false; this.scheduleViewSave();
     window.clearTimeout(this.resumeTimer);

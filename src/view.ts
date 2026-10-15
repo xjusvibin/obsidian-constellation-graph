@@ -15,6 +15,7 @@ export class ConstellationView extends ItemView {
 
   /** Called by an invite link. */
   openJoin(code: string): void { this.ca?.openJoin(code); }
+  tour(): void { this.ca?.tour(); }
 
   getViewType(): string { return VIEW_TYPE; }
   getDisplayText(): string { return "Starfield graph"; }

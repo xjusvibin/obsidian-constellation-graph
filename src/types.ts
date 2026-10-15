@@ -101,6 +101,8 @@ export interface GraphRenderer {
   animate(): void;
   /** Collapse, explode, re-settle, then trace the shortest paths from the main hub. Calling again stops it. */
   supernova(): void;
+  /** Fly a path through a chain of linked notes, starting from the selected one. Calling again stops it. */
+  tour(): void;
   readonly activity: "animate" | "supernova" | null;
   readonly canShow: boolean;
   /** Free flight through the constellation. Not available without WebGL. */

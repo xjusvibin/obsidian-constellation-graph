@@ -88,6 +88,7 @@ The graph area is focusable. Press **?** for this list in the app.
 | A | Animate (timelapse) |
 | G | Fold every group into one point, or open them all |
 | N | Black hole |
+| O | Tour: the camera visits a chain of linked notes, a few seconds at each (also a command: "Tour the linked notes") |
 | I | Save an image of the view |
 | R | Reset the view |
 | L | Show or hide the note list |
@@ -137,6 +138,9 @@ The controls are also shown on screen as a small panel of key caps that light up
 - **Wireframes and sound.** The plane has a glowing wireframe outline, and target brackets, impact bursts and faint shells around each group are drawn in wireframe too (they can be turned off). Engine, blaster, impact and warp sounds are synthesised in the plugin with the Web Audio API, nothing is loaded from a file, and they can be turned off or turned down. Sound mutes when the window loses focus.
 - Pilot mode needs motion, so it stays off when your system asks for reduced motion (the search, note list and details panel still work). It is not available without WebGL.
 
+- **Controller.** A game controller works with the standard layout, with no setup: left stick moves and strafes, right stick looks, right trigger fires, left trigger brakes, right bumper is the afterburner, left bumper a missile, A and B go up and down, X locks a pilot, and the d-pad rolls.
+- **Ship colours.** Choose a colour in the Fly together panel (or in the settings); other pilots see it. **Remember the camera** (a setting, off by default) opens the graph from the angle you left it.
+
 ## Fly together (multiplayer)
 
 Up to four pilots can share one sky, each with their own constellation. Click the people button on the toolbar, choose **Make a room**, and send the ten-character room code to your friends; they paste it under **Join**. Or press **Copy invite link** and send that: opening it starts Obsidian with the code already filled in (the link holds only the code, and nothing is joined until your friend presses **Join**). Then everyone presses **P** to fly.
@@ -145,6 +149,7 @@ Up to four pilots can share one sky, each with their own constellation. Click th
 - **How it connects:** there is no server to run. Pilots find each other through a public relay (the free [ntfy.sh](https://ntfy.sh) service by default, or one you choose in the settings). Every message through the relay is sealed with a key made from the room code, so the relay sees only noise, and nobody without the code can listen or take part. The relay carries only a handful of connection-setup messages; after that, pilots talk to each other directly (WebRTC), and your computer's address is visible to the other pilots and to the STUN servers that help the connection through your router.
 - **The rules in a room:** every pilot flies their own ship with the full flight model, at the same cruise speed. Each constellation sits still in its own corner of the sky, and there is no warping. Ships can shoot each other: every ship has a 40-point shield and a 100-point hull: hits take the shield first, the shield comes back by itself after 3.5 seconds without a hit, and the hull does not heal (a blaster hit is 10 and a cannon round 30, before the range bonus). Destroying another pilot patches the hull by 30 and recharges your shield, and a destroyed ship comes back after five seconds with three seconds when nothing can hit it, and each pilot's own computer decides whether *they* were hit. There is no score. Ships pass through one another.
 - **If it will not connect:** some networks block direct connections. You can enter your own TURN server in the settings and it will be used when a direct connection fails; nothing is set up for you. The free relay has usage limits, so a very busy day may need a different relay.
+- **Rounds.** The host can start a round from the panel: first to 5 or 10 kills, or the most kills in 3 or 5 minutes. Everyone's score starts again from nothing, the status shows at the top, and a banner names the winner. Only the host's start is accepted. You also come back to life away from the other pilots, at one of four spots around your constellation.
 - The Fly together panel shows each pilot's round-trip time (green under 80 ms, amber under 160, red above, and also how many recent pings were lost once it is 10 percent or more), measured with a tiny ping every two seconds over the direct link. **Lobby browser.** **Browse rooms** lists rooms whose hosts have turned on *List this room publicly*; press Join on one and the code is filled in (you still press Join in the panel). The host can remove a pilot with **Remove**. There is no server: listed rooms announce themselves (a name, the code and a pilot count, nothing about the vault) to one fixed public topic on the relay every 15 seconds, and the browser reads that topic. A listed room is public, so anyone can join it and will see the host's network address as in any room; names and codes come from strangers, so each announcement is checked, cleaned, rate limited and capped, and a removed pilot can come back (this is not a ban). A room closes when the last pilot leaves. Your vault is never changed, and changes you make to it while in a room appear when you leave.
 
 ## Accessibility
@@ -188,6 +193,8 @@ Rendering uses point sprites and line segments rather than a mesh per note. A ti
 - Multiplayer needs a network that allows direct connections, unless you set up your own TURN server. It has been tested with two pilots on one computer, and with the unit tests, but not yet across the internet between real Obsidian installs.
 
 ## Development
+
+`npm run screenshots -- <demo-vault> [out-dir]` builds the dev harness and takes the overview, folded, pilot and cockpit screenshots with headless Edge or Chrome.
 
 ```bash
 npm install
