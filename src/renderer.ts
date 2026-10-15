@@ -101,6 +101,8 @@ export class ConstellationRenderer implements GraphRenderer {
   private uniforms = { uScale: { value: 500 }, uGlow: { value: 1 }, uContrast: { value: 0 }, uPulse: { value: 1 }, uNova: { value: 0 }, uNodeScale: { value: 1 } };
 
   private pos = new Float32Array(0);
+  private jolt = new Float32Array(0); private joltV = new Float32Array(0); // how far a blast has pushed each note (drawing only, the layout is untouched), and how fast
+  private joltLive = false;
   private col = new Float32Array(0);
   private size = new Float32Array(0);
   private alpha = new Float32Array(0);
@@ -278,7 +280,7 @@ export class ConstellationRenderer implements GraphRenderer {
       sendBurst: b => this.cb.onNetworkBurst?.(b),
       sendGrab: id => this.cb.onNetworkGrab?.(id),
       grabbed: kind => this.pilot.receivePickup(kind),
-      explode: (x, y, z, size, color) => this.remote.explode(x, y, z, size, color),
+      explode: (x, y, z, size, color) => { this.remote.explode(x, y, z, size, color); this.shockwave(x, y, z, size); },
       sound: kind => this.pilot.playSound(kind),
       pilotPosition: (id, out) => (id === this.selfId ? this.pilot.shipPosition(out) : this.remote.pilotPosition(id, out)),
     });
@@ -499,6 +501,34 @@ export class ConstellationRenderer implements GraphRenderer {
     return out;
   }
 
+  /**
+   * A blast shoves nearby notes away and makes them flare, then they spring back (like a rubber band, a little overshoot).
+   * This is only how they are drawn: the layout, and what other pilots see of it, do not change. Off with the reader's motion setting.
+   */
+  private shockwave(x: number, y: number, z: number, size: number): void {
+    if (effectiveMotion(this.settings) === "off" || !this.jolt.length) return;
+    const nodes = this.sim.nodes, R = Math.max(40, size * 9), R2 = R * R, peak = 65 + size * 9;
+    for (let i = 0; i < nodes.length; i++) {
+      const p = nodes[i], dx = p.x - x, dy = p.y - y, dz = p.z - z, d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > R2 || this.alpha[i] < 0.05) continue;
+      const d = Math.sqrt(d2) || 1, f = (1 - d / R) ** 2 * peak / d;
+      this.joltV[i * 3] += dx * f; this.joltV[i * 3 + 1] += dy * f; this.joltV[i * 3 + 2] += dz * f;
+      this.emph[i] = Math.max(this.emph[i], 1.6 * (1 - d / R) + 0.2); // a flare that fades back by itself
+    }
+    this.joltLive = true; this.stale = true;
+  }
+
+  private stepJolt(dt: number): void {
+    const h = Math.min(dt, 0.05), K = 16, C = 4.2;
+    let live = false;
+    for (let j = 0; j < this.jolt.length; j++) {
+      const v = this.joltV[j] + (-K * this.jolt[j] - C * this.joltV[j]) * h;
+      this.joltV[j] = v; this.jolt[j] += v * h;
+      if (Math.abs(this.jolt[j]) > 0.02 || Math.abs(v) > 0.1) live = true; else { this.jolt[j] = 0; this.joltV[j] = 0; }
+    }
+    this.joltLive = live;
+  }
+
   private setAim(i: number): void { if (i !== this.aim) { this.aim = i; this.dirty = true; } }
   setSearch(matches: Set<number> | null): void { this.search = matches; this.dirty = true; }
   setHidden(groupIndex: number, hide: boolean): void { hide ? this.hidden.add(groupIndex) : this.hidden.delete(groupIndex); this.dirty = true; }
@@ -700,6 +730,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private allocate(n: number, l: number): void {
     this.disposeNodes();
     this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 3);
+    this.jolt = new Float32Array(n * 3); this.joltV = new Float32Array(n * 3); this.joltLive = false;
     this.size = new Float32Array(n); this.alpha = new Float32Array(n); this.emph = new Float32Array(n);
     this.tAlpha = new Float32Array(n).fill(1); this.tSize = new Float32Array(n); this.tEmph = new Float32Array(n);
     this.baseSize = new Float32Array(n);
@@ -1165,6 +1196,7 @@ export class ConstellationRenderer implements GraphRenderer {
     const anyClosed = this.exp.some(e => e < 1);
     if (anyClosed) this.measureGroups();
     if (opening) animating = true;
+    if (this.joltLive) { this.stepJolt(dt); animating = true; }
     if (!positionsChanged && !animating && !anyClosed) return false;
 
     const geo = this.nodePoints!.geometry;
@@ -1174,6 +1206,7 @@ export class ConstellationRenderer implements GraphRenderer {
         const cx = this.gc.x[p.gi], cy = this.gc.y[p.gi], cz = this.gc.z[p.gi];
         this.pos[i * 3] = cx + (p.x - cx) * e; this.pos[i * 3 + 1] = cy + (p.y - cy) * e; this.pos[i * 3 + 2] = cz + (p.z - cz) * e;
       } else { this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z; }
+      this.pos[i * 3] += this.jolt[i * 3]; this.pos[i * 3 + 1] += this.jolt[i * 3 + 1]; this.pos[i * 3 + 2] += this.jolt[i * 3 + 2];
     }
     (geo.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
     (geo.getAttribute("aSize") as THREE.BufferAttribute).needsUpdate = true;
