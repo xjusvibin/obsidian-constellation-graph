@@ -8,6 +8,8 @@ Pilot mode becomes a sandbox, and you can now fly together.
 
 **Invite links:** the Fly together panel has a Copy invite link button. Opening the link starts Obsidian with the room code filled in; your friend still presses Join.
 
+**Black hole:** the Supernova is now a physical black hole. Gravity pulls every note in on a spiral, a horizon grows as it feeds, and you see an accretion disk, a lensed ring of light, orbiting gas and the background bending around it; then it lets go and the layout re-forms.
+
 **Pilot mode is a sandbox.** It never selects or opens notes, and the rest of the plugin works as before outside it. Animate and Supernova are off while you fly or are in a room.
 
 - **Two weapons:** a blaster that runs hot and overheats, and a cannon that hits three times as hard but carries limited rounds per life (R switches).

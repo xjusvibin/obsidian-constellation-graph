@@ -21,7 +21,7 @@ const HELP = [
   "Enter: open the selected note (Shift+Enter: new tab)",
   "Space: pause or resume motion",
   "A: animate, watching notes appear in the order they were created",
-  "N: supernova, collapse everything, explode it and let it re-settle",
+  "N: black hole, a horizon forms and gravity pulls every note in, then it lets go and the layout re-forms",
   "P: Pilot mode, a flying sandbox (it never selects or opens notes; the rest of the plugin works as usual outside it). W A S D fly, mouse looks, Shift boosts, X brakes, click or F fires. T locks the target, G warps to it, H returns to the hub, V switches between chase and cockpit view. Esc frees the mouse, P leaves.",
   "G: fold every group into one point, or open them all (click a folded group to open it)",
   "I: save an image of the view (a PNG download, with no note names in it)",
@@ -116,7 +116,7 @@ export class ConstellationApp {
     const resetBtn = this.button("cg-btn", "Reset view", "⌖");
     this.animBtn = this.button("cg-btn", "Animate: watch the notes appear in the order they were created", "\u23F1");
     this.animBtn.setAttribute("aria-pressed", "false");
-    this.novaBtn = this.button("cg-btn", "Supernova: collapse the graph, explode it and let it re-settle", "\u273A");
+    this.novaBtn = this.button("cg-btn", "Black hole: gravity pulls every note into a black hole, then the layout re-forms", "\u273A");
     this.novaBtn.setAttribute("aria-pressed", "false");
     this.pilotBtn = this.button("cg-btn", "Pilot mode: fly through your notes (P)", "\u2708\uFE0E");
     this.pilotBtn.setAttribute("aria-pressed", "false");
@@ -405,7 +405,7 @@ export class ConstellationApp {
     }
   }
 
-  /** Animate and Supernova re-lay-out the whole graph, so they are off while you fly or are in a room. */
+  /** Animate and the black hole re-lay-out the whole graph, so they are off while you fly or are in a room. */
   private syncShowButtons(): void {
     const off = this.renderer.pilotActive || this.mpActive;
     for (const b of [this.animBtn, this.novaBtn]) { b.disabled = off; b.classList.toggle("cg-disabled", off); }

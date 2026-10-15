@@ -17,7 +17,7 @@
 | | |
 |---|---|
 | **Orbit, search and explore** | Drag to orbit, scroll to zoom, click a note to fly to it, double-click to open it. A searchable list and group legend sit alongside. |
-| **Animate and Supernova** | A timelapse that rebuilds your vault in the order you wrote it, and a one-flash supernova with a wave of light along the shortest paths. |
+| **Animate and Black hole** | A timelapse that rebuilds your vault in the order you wrote it, and a black hole that pulls your whole graph into an accretion disk before it lets go and the layout re-forms. |
 | **Pilot mode** | Fly a starfighter through your notes in a sandbox with real weight and momentum, an afterburner, a blaster and a cannon, and three ships to choose from. |
 | **Folded groups** | Fold every folder or tag into one glowing point, then shoot it open and watch its notes fly back out. |
 | **Fly together** | Up to four pilots share one sky, each with their own constellation, through a code-sealed room. No server to run, and never a note title shared. |
@@ -67,7 +67,7 @@ Your selection and any hidden groups are kept as the vault changes.
 | Pause / play | Stops or resumes all motion |
 | Reset view | Frames the whole graph again |
 | **Animate** | A timelapse: every note disappears, then returns in the order it was created, and each link flashes as it forms. Press again to stop |
-| **Supernova** | Everything is crushed into a point, detonates in one soft flash, re-forms from scratch, and a wave of light then runs outward along the shortest paths from the most-connected note (or the note you have selected). Press again to stop |
+| **Black hole** | A horizon forms at the middle of the graph and gravity pulls every note in: they swirl inward on spirals, shrink and redden as they are stretched toward it, and are swallowed when they cross the horizon, which grows as it feeds. You see the accretion disk (brighter on the side moving toward you), the ring of light bent over the hole, orbiting gas, and the stars and notes behind it bent into an Einstein ring (this last needs the glow pass, so not on the Low quality setting). When it has fed it lets go in one soft flash, the layout re-forms from scratch, and a wave of light runs outward along the shortest paths from the most-connected note. Press again to stop |
 | **Pilot** (plane) | Fly through your notes in a sandbox (see below) |
 | **Fold** (circled plus) | Fold every group into one point, or open them all |
 | **Fly together** (people) | Make or join a multiplayer room (see below) |
@@ -87,7 +87,7 @@ The graph area is focusable. Press **?** for this list in the app.
 | Space | Pause or resume motion |
 | A | Animate (timelapse) |
 | G | Fold every group into one point, or open them all |
-| N | Supernova |
+| N | Black hole |
 | I | Save an image of the view |
 | R | Reset the view |
 | L | Show or hide the note list |
@@ -149,8 +149,8 @@ Up to four pilots can share one sky, each with their own constellation. Click th
 
 ## Accessibility
 
-- **Reduced motion.** If your operating system requests reduced motion, flow, orbiting and camera flights are turned off: the layout settles once and stays still, dragged notes return at once instead of bouncing, and Supernova just recomputes the layout instantly without the show. Animate still works because you asked for it, but without the pop-in effects. You can also set motion to *Off* yourself, or pause at any time.
-- **No strobing.** The Supernova has a single soft flash that fades over about a second, and it is skipped under reduced motion and in high-contrast mode.
+- **Reduced motion.** If your operating system requests reduced motion, flow, orbiting and camera flights are turned off: the layout settles once and stays still, dragged notes return at once instead of bouncing, and the black hole just recomputes the layout instantly without the show. Animate still works because you asked for it, but without the pop-in effects. You can also set motion to *Off* yourself, or pause at any time.
+- **No strobing.** The black hole has a single soft flash that fades over about a second, and it is skipped under reduced motion and in high-contrast mode.
 - **Screen readers.** The canvas is hidden from assistive technology and replaced by a status region that announces the selected note, its group and link count. The note list, search, group legend and details panel are ordinary buttons and lists.
 - **No colour-only meaning.** Group names are always shown in the legend, tooltip and details panel, and selected or open notes get a ring as well as a colour change.
 - **Colour-blind palette** (Okabe-Ito), **high contrast** (also switched on by the system "more contrast" setting), and adjustable label size.

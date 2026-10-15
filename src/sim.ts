@@ -1,13 +1,15 @@
 import { forceSimulation, forceLink, forceManyBody, type Force, type ForceLink, type ForceManyBody, type Simulation as D3Simulation } from "d3-force-3d";
 import type { GraphData, SimNode } from "./types";
 import type { MotionLevel } from "./settings";
+import type { HoleState } from "./blackhole";
 
 const GAIN: Record<MotionLevel, number> = { off: 0, calm: 1, lively: 2.4 };
 const STEP = 1 / 60;
 
 /** A link as d3 sees it: ids at first, replaced by the node objects once the simulation has resolved them. */
 interface SimLink { source: string | SimNode; target: string | SimNode }
-const COLLAPSE = 1.5; // seconds spent crushing everything toward one point
+const INFALL = 11;   // seconds the notes are given to fall into the black hole before it lets go
+const INFALL_TFF = 8.5; // the free-fall time from the edge of the graph, which sets how strong gravity is
 const SETTLE_MAX = 4.6; // seconds allowed for the layout to find its new resting shape
 
 function hash(n: number): number {
@@ -35,6 +37,8 @@ export class Simulation {
   private linkForce: ForceLink<SimNode, SimLink>;
   private charge: ForceManyBody<SimNode>;
   private level: MotionLevel | null = null;
+  private hole: { rh0: number; GM: number; absorbed: Uint8Array; count: number } | null = null;
+  private holeOut: HoleState = { active: false, x: 0, y: 0, z: 0, rh: 6, frac: 0, axis: [0.28, 1, 0.18] };
   private spacing = 1; // scales the repel force, the link distance and the starting spread
   private avgTick = 0;
   private frameNo = 0;
@@ -150,20 +154,46 @@ export class Simulation {
     for (let i = 0; i < this.groups; i++) { const c = this.cn[i] || 1; this.cx[i] /= c; this.cy[i] /= c; this.cz[i] /= c; }
   }
 
-  /** Begin a supernova: crush everything together, then blast it apart so the layout re-forms from scratch. */
-  novaStart(): void {
+  /**
+   * Begin the black hole: a horizon forms at the middle of the graph and gravity pulls every note in. Each note starts with a
+   * sideways speed around the disk's axis, so they swirl in on spirals instead of falling straight, and they are swallowed
+   * when they cross the horizon (which grows as it feeds). When it has fed, it lets go in a burst and the layout re-forms.
+   */
+  novaStart(axisIn?: [number, number, number]): void {
+    const b = this.bounds(), N = Math.max(1, this.nodes.length), R = Math.max(60, b.radius);
+    const GM = (Math.PI * Math.PI / 4) * R * R * R / (2 * INFALL_TFF * INFALL_TFF); // free-fall from rest at R takes INFALL_TFF seconds
+    const axis = this.holeOut.axis; if (axisIn) { axis[0] = axisIn[0]; axis[1] = axisIn[1]; axis[2] = axisIn[2]; }
+    const al = Math.hypot(axis[0], axis[1], axis[2]); axis[0] /= al; axis[1] /= al; axis[2] /= al;
+    const rh0 = 0.05 * R + 3;
+    this.hole = { rh0, GM, absorbed: new Uint8Array(N), count: 0 };
+    const h = this.holeOut; h.active = true; h.x = b.cx; h.y = b.cy; h.z = b.cz; h.rh = rh0; h.frac = 0;
+    this.nodes.forEach((n, i) => {
+      const dx = n.x - b.cx, dy = n.y - b.cy, dz = n.z - b.cz, r = Math.max(1, Math.hypot(dx, dy, dz));
+      let tx = axis[1] * dz - axis[2] * dy, ty = axis[2] * dx - axis[0] * dz, tz = axis[0] * dy - axis[1] * dx; // around the axis
+      const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+      const v = Math.sqrt(GM / Math.max(r, rh0)) * (0.3 + 0.35 * hash(i + 41)) * STEP; // below circular speed: they spiral in
+      n.vx = tx * v; n.vy = ty * v; n.vz = tz * v;
+    });
     this.nova = { phase: "collapse", t: 0 };
-    this.charge.strength(-5); // repulsion off, so the crush can actually compress
+    this.charge.strength(0); this.linkForce.strength(0); // nothing but gravity matters while they fall (repulsion between notes crowded at the middle would fling them out)
+    this.sim.velocityDecay(0.004);
     this.sim.alphaTarget(0.35);
     this.sim.alpha(0.5);
   }
+
+  /** What the picture needs: where the hole is, how big it has grown and how much of the graph it has eaten. */
+  holeState(): HoleState { return this.holeOut; }
+
+  /** Which notes have been swallowed (so they are not drawn), or null when there is no hole. */
+  get swallowed(): Uint8Array | null { return this.hole ? this.hole.absorbed : null; }
 
   /** "collapse" -> "settle" (just blasted) -> "idle" once the layout has found its new shape. */
   get novaPhase(): "idle" | "collapse" | "settle" { return this.nova ? this.nova.phase : "idle"; }
 
   novaCancel(): void {
     if (!this.nova) return;
-    this.nova = null;
+    this.nova = null; this.hole = null; this.holeOut.active = false;
+    this.sim.velocityDecay(0.34); this.linkForce.strength(0.3);
     this.charge.strength(-30 * this.spacing);
     this.sim.alphaTarget(this.gain === 0 ? 0 : 0.03);
   }
@@ -331,14 +361,19 @@ export class Simulation {
     const nv = this.nova!;
     nv.t += STEP;
     if (nv.phase === "collapse") {
-      let sx = 0, sy = 0, sz = 0;
-      for (const n of nodes) { sx += n.x; sy += n.y; sz += n.z; }
-      const N = Math.max(1, nodes.length), cx = sx / N, cy = sy / N, cz = sz / N;
-      const c = Math.min(1, nv.t / COLLAPSE), k = 0.06 + 0.34 * c * c; // the pull accelerates, like gravity winning
+      const h = this.hole!, N = Math.max(1, nodes.length), ho = this.holeOut, gm = h.GM * STEP * STEP;
+      ho.frac = h.count / N; ho.rh = h.rh0 * (1 + 0.9 * Math.sqrt(ho.frac)); // it grows as it feeds
+      const hx = ho.x, hy = ho.y, hz = ho.z, rh2 = ho.rh * ho.rh;
       for (const n of nodes) {
-        n.vx += (cx - n.x) * k; n.vy += (cy - n.y) * k; n.vz += (cz - n.z) * k;
+        if (h.absorbed[n.index]) { n.x = hx; n.y = hy; n.z = hz; n.vx = n.vy = n.vz = 0; continue; }
+        const dx = n.x - hx, dy = n.y - hy, dz = n.z - hz, r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 < rh2) { h.absorbed[n.index] = 1; h.count++; n.x = hx; n.y = hy; n.z = hz; n.vx = n.vy = n.vz = 0; continue; } // past the horizon
+        const r = Math.sqrt(r2) || 1, a = gm / (r2 + 25);                                                                 // gravity, softened near the middle
+        n.vx -= (dx / r) * a; n.vy -= (dy / r) * a; n.vz -= (dz / r) * a;
+        const visc = 1 - 0.25 * STEP;                                                                                       // a little accretion drag, so orbits shrink
+        n.vx *= visc; n.vy *= visc; n.vz *= visc;
       }
-      if (nv.t >= COLLAPSE) this.blast(nodes, cx, cy, cz);
+      if (nv.t >= INFALL || h.count >= N * 0.97) this.blast(nodes, hx, hy, hz);
       return true;
     }
     // settle: done when the layout has calmed down, or after the time limit
@@ -348,6 +383,8 @@ export class Simulation {
 
   /** The explosion: every note is thrown outward along its own direction, with a sideways twist so it spirals. */
   private blast(nodes: SimNode[], cx: number, cy: number, cz: number): void {
+    this.hole = null; this.holeOut.active = false;
+    this.sim.velocityDecay(0.34); this.linkForce.strength(0.3);
     this.charge.strength(-30 * this.spacing);
     nodes.forEach((n, i) => {
       let dx = n.x - cx, dy = n.y - cy, dz = n.z - cz, r = Math.hypot(dx, dy, dz);

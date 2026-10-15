@@ -1,3 +1,4 @@
+import { BlackHole } from "./blackhole";
 import { PowerWorld } from "./powerworld";
 import { pickupLayout, type BurstMsg, type MissileMsg } from "./powerups";
 import * as THREE from "three";
@@ -84,6 +85,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 7000);
   private controls: OrbitControls;
   private composer: EffectComposer;
+  private hole!: BlackHole;
   private renderPass: RenderPass;
   private bloom: UnrealBloomPass;
   private canvas: HTMLCanvasElement;
@@ -214,6 +216,8 @@ export class ConstellationRenderer implements GraphRenderer {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.bloom);
+    this.hole = new BlackHole(this.scene, this.camera);
+    this.composer.addPass(this.hole.pass); // after the glow, so the lensing bends the glow too
 
     this.stars = this.makeStars();
     this.scene.add(this.stars);
@@ -559,10 +563,13 @@ export class ConstellationRenderer implements GraphRenderer {
       this.sim.relayout(); this.dirty = true; this.stale = true; this.resetView();
       this.cb.onActivity?.(null, "Layout re-optimized"); return;
     }
-    if (this.paused) { this.cb.onActivity?.(null, "Resume motion first, then start the supernova"); return; }
-    this.sim.novaStart();
+    if (this.paused) { this.cb.onActivity?.(null, "Resume motion first, then start the black hole"); return; }
+    // the disk is tilted about 25 degrees toward you from edge-on, so you see its face and the ring bent over the hole
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion), toward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.camera.quaternion);
+    const axis = up.multiplyScalar(Math.cos(0.45)).addScaledVector(toward, Math.sin(0.45)).normalize();
+    this.sim.novaStart([axis.x, axis.y, axis.z]);
     this.nova = { stage: "collapse", t0: this.age, blastAt: 0, traceT0: 0, depth: new Int16Array(0), maxDepth: 0 };
-    this.cb.onActivity?.("supernova", "Supernova: collapsing");
+    this.cb.onActivity?.("supernova", "Black hole: forming");
   }
 
   private novaStop(finished: boolean): void {
@@ -570,7 +577,8 @@ export class ConstellationRenderer implements GraphRenderer {
     this.nova = null; this.novaBloom = 0; this.dirty = true; this.stale = true;
     this.uniforms.uPulse.value = 1; this.uniforms.uNova.value = 0; this.flashEl.setCssProps({ opacity: "0" });
     this.bloom.strength = effectiveHighContrast(this.settings) ? 0 : 0.35 * this.settings.glow;
-    this.cb.onActivity?.(null, finished ? "Layout optimized" : "Supernova stopped");
+    this.hole.reset();
+    this.cb.onActivity?.(null, finished ? "Layout optimized" : "Black hole stopped");
   }
 
   private pairKey(a: number, b: number): number { return a < b ? a * 1_000_003 + b : b * 1_000_003 + a; }
@@ -589,7 +597,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.treeLink = new Uint8Array(this.sim.srcs.length);
     for (let i = 0; i < N; i++) if (parent[i] >= 0) { const l = this.linkAt.get(this.pairKey(i, parent[i])); if (l !== undefined) this.treeLink[l] = 1; }
     nv.stage = "trace"; nv.traceT0 = now; nv.depth = depth; nv.maxDepth = maxDepth;
-    this.cb.onActivity?.("supernova", "Supernova: tracing the shortest paths");
+    this.cb.onActivity?.("supernova", "Black hole: tracing the shortest paths");
   }
 
   private fitDistance(radius: number): number {
@@ -615,7 +623,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.disposeNodes();
     this.stars.geometry.dispose(); (this.stars.material as THREE.Material).dispose();
     // EffectComposer.dispose() does not free its passes, and browsers cap live WebGL contexts
-    this.bloom.dispose(); this.renderPass.dispose(); this.composer.dispose();
+    this.hole.dispose(); this.bloom.dispose(); this.renderPass.dispose(); this.composer.dispose();
     this.renderer.dispose(); this.renderer.forceContextLoss();
     this.canvas.remove(); this.labelLayer.remove(); this.flashEl.remove();
   }
@@ -956,6 +964,14 @@ export class ConstellationRenderer implements GraphRenderer {
     if (this.dirty) this.recomputeTargets();
 
     const animating = this.updateBuffers(dt, moving || this.stale);
+    const hs = this.sim.holeState();
+    if (hs.active) this.applyHoleToNodes(hs);
+    if (hs.active || this.hole.alive) {
+      const lensOn = this.settings.bloom && this.settings.quality !== "low" && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0;
+      const px = (this.canvas.clientHeight * this.renderer.getPixelRatio()) / (2 * Math.tan((FOV * Math.PI) / 360));
+      this.hole.update(dt, hs, lensOn, px, this.camera.aspect);
+      this.stale = true;
+    }
     let camMoved = false;
     if (this.pilot.active) {
       this.pilot.update(dt);
@@ -989,6 +1005,21 @@ export class ConstellationRenderer implements GraphRenderer {
     }
   };
 
+  /** Notes near the hole shrink and darken as they are stretched toward it (a crude spaghettification and redshift), and swallowed ones vanish. */
+  private applyHoleToNodes(h: { x: number; y: number; z: number; rh: number }): void {
+    const nodes = this.sim.nodes, gone = this.sim.swallowed, geo = this.nodePoints?.geometry;
+    if (!geo) return;
+    for (let i = 0; i < nodes.length; i++) {
+      if (gone && gone[i]) { this.alpha[i] = 0; this.size[i] = 0; continue; }
+      const n = nodes[i], d = Math.hypot(n.x - h.x, n.y - h.y, n.z - h.z), t = Math.min(1, Math.max(0, (d - h.rh * 1.1) / (h.rh * 6)));
+      const f = t * t * (3 - 2 * t);
+      this.alpha[i] = Math.min(this.alpha[i], 0.12 + 0.88 * f);
+      this.size[i] = Math.min(this.size[i], this.baseSize[i] * (0.35 + 0.65 * f));
+    }
+    (geo.getAttribute("aSize") as THREE.BufferAttribute).needsUpdate = true;
+    (geo.getAttribute("aAlpha") as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   private updateShows(_dt: number): void {
     const now = this.age;
     if (this.reveal) {
@@ -1010,10 +1041,10 @@ export class ConstellationRenderer implements GraphRenderer {
     this.stale = true;
     const phase = this.sim.novaPhase, hc = effectiveHighContrast(this.settings), base = hc ? 0 : 0.35 * this.settings.glow;
     if (nv.stage === "collapse") {
-      if (phase === "settle") { nv.stage = "settle"; nv.blastAt = now; this.cb.onActivity?.("supernova", "Supernova: detonation"); }
+      if (phase === "settle") { nv.stage = "settle"; nv.blastAt = now; this.hole.release(); this.cb.onActivity?.("supernova", "Black hole: it lets go"); }
       else {
-        const c = Math.min(1, (now - nv.t0) / 1.5);
-        this.uniforms.uNova.value = c * 0.8; this.uniforms.uPulse.value = 1 + 0.35 * c; this.novaBloom = 0.8 * c * c;
+        const hs = this.sim.holeState();
+        this.uniforms.uNova.value = 0; this.uniforms.uPulse.value = 1; this.novaBloom = 0.35 * hs.frac; // the hole is lit by its own disk, not by the notes
         this.flashEl.setCssProps({ opacity: "0" });
       }
     }
