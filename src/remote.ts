@@ -201,6 +201,9 @@ export class RemoteWorld {
 
   showHit(hit: HitMsg): void { this.burst(hit.at[0], hit.at[1], hit.at[2], 6, "#ffb27a"); }
 
+  /** The name shown for a pilot (for messages such as a missile lock). */
+  nameOf(id: string): string { return this.ships.get(id)?.name ?? "A pilot"; }
+
   remove(id: string): void {
     this.removeMap(id);
     const s = this.ships.get(id);

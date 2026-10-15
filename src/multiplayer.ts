@@ -169,6 +169,8 @@ export interface SessionCallbacks {
   missile(from: string, missile: MissileMsg): void;
   burst(from: string, burst: BurstMsg): void;
   grab(from: string, pickup: number): void;
+  /** Another pilot has locked on to you (on), or let go (off). */
+  lockedBy(from: string, on: boolean): void;
   /** The host started a round. */
   round(round: RoundMsg): void;
   /** The host's picture of the round and scores, to send to a pilot who has just connected (null when there is nothing to tell). */
@@ -441,6 +443,7 @@ export class MultiplayerSession {
     if (m.t === "kick") { if (this.hostId() === id) this.leave("You were removed from the room by its host."); return; }
     if (m.t === "missile" && validMissile(m.missile)) { this.cb.missile(id, m.missile); return; }
     if (m.t === "burst" && validBurst(m.burst)) { this.cb.burst(id, m.burst); return; }
+    if (m.t === "lock" && (m.tg === null || (typeof m.tg === "string" && /^[0-9a-f-]{36}$/i.test(m.tg)))) { this.cb.lockedBy(id, m.tg === this.selfId); return; }
     if (m.t === "grab" && validGrab(m.id)) { this.cb.grab(id, m.id); return; }
     if (m.t === "ping" && Number.isSafeInteger(m.n) && typeof m.at === "number" && Number.isFinite(m.at)) { this.sendTo(id, { t: "pong", n: m.n, at: m.at }); return; }
     if (m.t === "pong" && typeof m.at === "number" && Number.isFinite(m.at)) {
@@ -562,6 +565,8 @@ export class MultiplayerSession {
   sendMissile(missile: MissileMsg): void { this.sendControl({ t: "missile", missile }); }
   sendBurst(burst: BurstMsg): void { this.sendControl({ t: "burst", burst }); }
   sendGrab(id: number): void { this.sendControl({ t: "grab", id }); }
+  /** Tell the room who you have locked (or null when you let go), so the target can be warned. */
+  sendLock(target: string | null): void { this.sendControl({ t: "lock", tg: target }); }
   /** The host starts a round for everyone (and for themselves, through the callback). */
   startRound(round: RoundMsg): void { if (this.isHost) { this.sendControl({ t: "round", round }); this.cb.round(round); } }
   sendShot(shot: ShotMsg): void { this.sendControl({ t: "shot", shot }); }

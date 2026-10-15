@@ -78,6 +78,8 @@ export interface RendererCallbacks {
   onNetworkMissile?(missile: MissileMsg): void;
   onNetworkBurst?(burst: BurstMsg): void;
   onNetworkGrab?(pickup: number): void;
+  /** Multiplayer: you locked on to a pilot (their id), or let go (null). */
+  onNetworkLock?(target: string | null): void;
   /** The pilot changed the volume with the keys; save it. */
   onVolume?(volume: number): void;
   /** The arcade high-score table and the public board. */
@@ -127,6 +129,8 @@ export interface GraphRenderer {
   addRemoteMissile?(id: string, missile: MissileMsg, from: string): void;
   addRemoteBurst?(burst: BurstMsg): void;
   remoteGrab?(pickup: number): void;
+  /** Another pilot locked on to you, or let go. */
+  lockWarning?(from: string, on: boolean): void;
   /** You destroyed another pilot (heals you a little). */
   rewardKill?(): void;
   /** The current view as a PNG (the 3D scene only: no note names are drawn into it), or null if it cannot be made. */

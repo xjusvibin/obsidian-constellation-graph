@@ -323,6 +323,13 @@ export class PilotAudio {
     [660, 880, 1320].forEach((f, i) => this.tone("triangle", f, f * 1.01, 0.5, 0.13, { t: t + i * 0.075, wet: 0.45 }));
   }
 
+  /** Someone has locked a missile on you: two sharp beeps. */
+  warn(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    this.tone("square", 1200, 1200, 0.07, 0.1, { t, wet: 0.1 }); this.tone("square", 1200, 1200, 0.07, 0.1, { t: t + 0.12, wet: 0.1 });
+  }
+
   lock(on: boolean): void {
     if (!this.ok()) return;
     const t = this.ctx!.currentTime;

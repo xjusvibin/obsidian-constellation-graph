@@ -356,3 +356,9 @@
 .cg-arcade-btn:disabled { opacity: 0.5; cursor: default; }
 .cg-arcade-note { margin-top: 10px; min-height: 1.4em; font-size: 12px; text-align: center; color: #9aa6c2; text-transform: none; }
 @media (prefers-reduced-motion: reduce) { .cg-arcade-blink, .cg-arcade-mine { animation: none; } }
+
+/* Missile lock warning */
+.cg-pilot-warn { text-transform: uppercase; position: absolute; top: 130px; left: 50%; transform: translateX(-50%); padding: 6px 18px; border-radius: 6px; background: rgba(60, 0, 0, 0.85); border: 2px solid #ff4040; color: #ffb0b0; font-size: 16px; font-weight: 700; letter-spacing: 0.2em; pointer-events: none; animation: cg-warn-blink 0.5s steps(2, start) infinite; }
+.cg-pilot-warn.cg-hidden { display: none; }
+@keyframes cg-warn-blink { to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .cg-pilot-warn { animation: none; } }

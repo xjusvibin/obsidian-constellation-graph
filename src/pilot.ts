@@ -47,6 +47,8 @@ export interface PilotHost {
   onState(active: boolean, text: string): void;
   /** The reader pressed Esc with the mouse already free: leave Pilot mode. */
   leave(): void;
+  /** Multiplayer: you locked on to a pilot (their id), or let go (null). */
+  onLock(target: string | null): void;
   /** The arcade run's high-score table and the public board (absent in the browser preview). */
   arcade?: ArcadeBackend;
   /** The volume was changed with the keys (0 to 1); remember it. */
@@ -286,6 +288,9 @@ export class PilotController {
   private heat = 0; private overheated = false;
   private ammo = AMMO_MAX; private ammoAcc = 0; private lastDry = -1e9;
   private weaponBox: HTMLDivElement; private weaponLabel: HTMLSpanElement; private weaponFill: HTMLDivElement;
+  private lockSent = 0;                      // when the lock was last announced to the room (it is repeated while it lasts)
+  private lockedBy = new Map<string, number>(); // pilots who have locked on to you, and when we last heard
+  private warnChip!: HTMLDivElement;
   private lockedPilot: string | null = null; // the pilot you have locked (T): your missiles home on them, and the lead pip follows them
   private warp: Warp | null = null;
   private bolts: Bolt[] = [];
@@ -403,6 +408,7 @@ export class PilotController {
     this.padChip = this.hud.createDiv({ cls: "cg-pilot-pad cg-hidden" });
     this.droneChip = this.hud.createDiv({ cls: "cg-pilot-drones cg-hidden" });
     this.tipChip = this.hud.createDiv({ cls: "cg-pilot-tip cg-hidden", attr: { role: "status" } });
+    this.warnChip = this.hud.createDiv({ cls: "cg-pilot-warn cg-hidden", attr: { role: "alert" } });
     this.drones = new DroneField(this.scene);
     this.arcade = new ArcadeScreen(this.hud, host.arcade, { again: () => this.startRun(), close: () => this.closeArcade() });
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
@@ -627,6 +633,8 @@ export class PilotController {
     window.removeEventListener("focus", this.onWindowFocus);
     if (this.locked) document.exitPointerLock();
     this.audio.stop();
+    if (this.lockedPilot) this.setLock(null);
+    this.lockedBy.clear(); this.warnChip.classList.add("cg-hidden");
     this.drones.stop(); this.droneChip.classList.add("cg-hidden");
     window.clearTimeout(this.tipTimer); this.tutorial = null; this.tipChip.classList.add("cg-hidden");
     this.arcade.hide(); this.runActive = false; this.runLeft = 0;
@@ -855,7 +863,7 @@ export class PilotController {
   /** T locks the note under the crosshair as a flight target (G warps to it); T again, or T over nothing, lets go. */
   /** T locks the pilot nearest your crosshair (in front of you, within range); T again lets go. Missiles you fire then home on them. */
   private toggleLock(): void {
-    if (this.lockedPilot) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock released"); return; }
+    if (this.lockedPilot) { this.setLock(null); this.audio.lock(false); this.host.onState(true, "Lock released"); return; }
     const targets = this.lockTargets();
     if (!this.opts.multiplayer && !targets.length) { this.host.onState(true, this.opts.drones ? "Nothing to lock yet" : "Locking needs a drone (turn on practice drones) or other pilots in a room"); return; }
     const fwd = this.fwdV.set(0, 0, -1).applyQuaternion(this.quat);
@@ -866,8 +874,30 @@ export class PilotController {
       if (dot > bestDot) { bestDot = dot; best = t; }
     }
     if (!best) { this.host.onState(true, this.opts.multiplayer ? "No pilot in front of you to lock" : "No drone in front of you to lock"); return; }
-    this.lockedPilot = best.id; this.audio.lock(true);
+    this.setLock(best.id); this.audio.lock(true);
     this.host.onState(true, `Locked on ${best.name}: your missiles will home`);
+  }
+
+  /** Hold (or drop) a lock. In a room the target is told, and told again every second while it lasts. */
+  private setLock(id: string | null): void {
+    this.lockedPilot = id;
+    if (this.opts.multiplayer) { this.host.onLock(id && !id.startsWith("drone:") ? id : null); this.lockSent = this.clock; }
+  }
+
+  /** Another pilot locked a missile on you (on), or let go (off). A lock that is not renewed within a few seconds is forgotten. */
+  lockWarning(name: string, from: string, on: boolean): void {
+    if (!on) { this.lockedBy.delete(from); return; }
+    if (!this.lockedBy.has(from)) { this.audio.warn(); this.host.onState(true, `${name} has locked on to you`); }
+    this.lockedBy.set(from, this.clock);
+  }
+
+  private updateLockWarning(): void {
+    if (this.opts.multiplayer && this.lockedPilot && this.clock - this.lockSent > 1000) { this.host.onLock(this.lockedPilot); this.lockSent = this.clock; }
+    for (const [id, at] of this.lockedBy) if (this.clock - at > 3000) this.lockedBy.delete(id);
+    const live = this.health > 0 && this.lockedBy.size > 0;
+    if (live && this.frame % 20 === 0 && this.lockedBy.size) this.audio.warn();
+    this.warnChip.classList.toggle("cg-hidden", !live);
+    if (live) this.warnChip.textContent = "Missile lock";
   }
 
   /** What T can lock: the other pilots in a room, or the practice drones when flying alone. */
@@ -898,7 +928,7 @@ export class PilotController {
     r.visible = false;
     if (!this.lockedPilot) return;
     const t = this.lockTargets().find(x => x.id === this.lockedPilot);
-    if (!t) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock lost"); return; }
+    if (!t) { this.setLock(null); this.audio.lock(false); this.host.onState(true, "Lock lost"); return; }
     if (!this.opts.wireframe || this.health <= 0 || this.watching) return;
     r.visible = true; r.position.set(t.x, t.y, t.z);
     r.scale.setScalar(Math.max(2.4, t.dist * 0.03) * 1.45);
@@ -1037,6 +1067,7 @@ export class PilotController {
       if (this.boosting) this.tutorial.note("boost");
     }
     this.updateBolts(dt);
+    if (this.opts.multiplayer) this.updateLockWarning();
     if (this.runActive) { this.runLeft -= dt; if (this.runLeft <= 0) this.endRun(); }
     if (this.drones.active) {
       if (this.drones.update(dt, this.clock)) { this.showDrones(true); this.host.onState(true, `Wave ${this.drones.info.wave}: ${this.drones.info.total} drones`); }
@@ -1553,7 +1584,8 @@ export class PilotController {
     const from = this.muzzle(0, new THREE.Vector3());
     const cl = this.host.pickClusterAt(this.aimX, this.aimY, FIRE_SLACK), i = cl >= 0 ? -1 : this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
     const body = cl >= 0 ? this.host.clusterBodies().find(x => x.g === cl) : undefined, n = i >= 0 ? this.host.nodes()[i] : null;
-    const to = body ? this.hitA.set(body.x, body.y, body.z) : n ? this.hitA.set(n.x, n.y, n.z) : this.hitA.set(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
+    const locked = this.lockedPilot ? this.lockTargets().find(t => t.id === this.lockedPilot) : undefined; // a locked missile leaves toward its target, whatever note is under the crosshair
+    const to = locked ? this.hitA.set(locked.x, locked.y, locked.z) : body ? this.hitA.set(body.x, body.y, body.z) : n ? this.hitA.set(n.x, n.y, n.z) : this.hitA.set(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
     const dir = this.hitB.copy(to).sub(from).normalize();
     this.host.fireMissile(crypto.randomUUID(), from, dir, this.vel.length(), this.lockedPilot);
   }

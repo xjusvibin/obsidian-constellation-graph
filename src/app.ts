@@ -117,6 +117,7 @@ export class ConstellationApp {
       onNetworkMissile: m => this.session.sendMissile(m),
       onNetworkBurst: b => this.session.sendBurst(b),
       onNetworkGrab: id => this.session.sendGrab(id),
+      onNetworkLock: target => this.session.sendLock(target),
       onScores: on => this.showBoard(on),
     };
     let made: GraphRenderer | null = null;
@@ -192,6 +193,7 @@ export class ConstellationApp {
       missile: (from, m) => this.renderer.addRemoteMissile?.(m.id, m, from),
       burst: (_id, b) => this.renderer.addRemoteBurst?.(b),
       grab: (_id, pickup) => this.renderer.remoteGrab?.(pickup),
+      lockedBy: (from, on) => this.renderer.lockWarning?.(from, on),
       round: r => this.beginRound(r),
       syncState: () => this.roundSync(),
       sync: s => this.applySync(s),

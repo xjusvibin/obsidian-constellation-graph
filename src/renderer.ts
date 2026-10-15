@@ -250,6 +250,7 @@ export class ConstellationRenderer implements GraphRenderer {
       onState: (active, text) => this.onPilotState(active, text),
       leave: () => this.setPilot(false),
       setVolume: v => this.cb.onVolume?.(v),
+      onLock: target => this.cb.onNetworkLock?.(target),
       arcade: this.cb.arcade,
       tipsDone: () => this.cb.onTipsDone?.(),
       onNetworkPose: pose => this.cb.onNetworkPose?.(pose),
@@ -422,6 +423,7 @@ export class ConstellationRenderer implements GraphRenderer {
   setPowerSeed(seed: string): void { this.powerSeed = seed; this.powersReady = false; }
   addRemoteMissile(id: string, m: MissileMsg, from: string): void { this.powers.launch(id, from, new THREE.Vector3(...m.o), new THREE.Vector3(...m.d), m.s, true, m.tg ?? null); this.stale = true; }
   addRemoteBurst(b: BurstMsg): void { this.powers.addBurst(b, performance.now()); this.stale = true; }
+  lockWarning(from: string, on: boolean): void { this.pilot.lockWarning(this.remote.nameOf(from), from, on); }
   remoteGrab(pickup: number): void { this.powers.remoteGrab(pickup, performance.now()); }
 
   /** Lay the pickups out: around the room's middle in a room (from the room code), or around your own constellation when you fly alone. */
