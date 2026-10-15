@@ -1,3 +1,10 @@
+**0.9.5: the arcade run, and lock-on that works.**
+
+- **Arcade run:** flying alone, press Enter for a timed three-minute run against the drone waves (1,000 points per wave cleared, 100 per drone). An arcade-style game over screen asks for your name if it is a high score and shows the top ten, kept on your computer.
+- **Optional public board:** two buttons, used only when you press them, can submit your name and score to a public relay topic and show recent scores from other pilots. Nothing else is sent. Scores there are not verified and the relay keeps them about twelve hours; the README privacy section says so.
+- **Lock-on on drones:** T locks the drone in front of your crosshair, your missiles home on it, and a missile that reaches it destroys it.
+- **Under the hood:** settings-migration tests, so settings saved by older versions keep loading.
+
 **0.9.0: more to do, and easier to play.**
 
 - **Practice drones:** flying alone, red target drones circle your graph in waves, each a little bigger, tougher and faster. They are never there in a room, and a setting turns them off.
