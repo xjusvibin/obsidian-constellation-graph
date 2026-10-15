@@ -116,7 +116,7 @@ export class MultiplayerPanel {
     // the host can put the room on the board
     this.listLabel = this.el.createEl("label", { cls: "cg-lobby-list-opt" });
     this.listBox = createEl("input", { attr: { type: "checkbox" } });
-    this.listLabel.append(this.listBox, createEl("span", { text: " List this room publicly (anyone can find and join it)" }));
+    this.listLabel.append(this.listBox, createSpan({ text: " List this room publicly (anyone can find and join it)" }));
     this.listLabel.hidden = true;
     this.listBox.addEventListener("change", () => this.host.setListed(this.listBox.checked));
 

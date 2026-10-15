@@ -16,7 +16,7 @@ function make<K extends keyof HTMLElementTagNameMap>(tag: K, o?: Info | string):
   return e;
 }
 
-Object.assign(window, { createEl: make, createDiv: (o?: Info | string) => make("div", o) });
+Object.assign(window, { createEl: make, createDiv: (o?: Info | string) => make("div", o), createSpan: (o?: Info | string) => make("span", o) });
 
 Object.assign(HTMLElement.prototype, {
   createDiv(this: HTMLElement, o?: Info | string) { const e = make("div", o); this.appendChild(e); return e; },
