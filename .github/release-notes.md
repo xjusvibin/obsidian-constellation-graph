@@ -1,3 +1,8 @@
+**0.9.6: missile lock that works in a room.** Tested between two real windows.
+
+- **Fixed:** a missile fired with a lock used to leave toward whatever note was under the crosshair and could miss completely. It now leaves toward its target and homes.
+- **Lock warning:** the pilot you lock on to sees a flashing "Missile lock" warning and hears two beeps, so they know to break away. Older versions ignore the new message and just don't show the warning.
+
 **0.9.5: the arcade run, and lock-on that works.**
 
 - **Arcade run:** flying alone, press Enter for a timed three-minute run against the drone waves (1,000 points per wave cleared, 100 per drone). An arcade-style game over screen asks for your name if it is a high score and shows the top ten, kept on your computer.
