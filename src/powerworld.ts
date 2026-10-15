@@ -22,6 +22,8 @@ export interface PowerHooks {
   sound(kind: "pickup" | "launch" | "boom" | "break"): void;
   /** Where a pilot is (you, or another pilot as drawn here), for a missile that is locked on to them. */
   pilotPosition(id: string, out: THREE.Vector3): boolean;
+  /** Flying alone: did a missile of yours, flying from a to b, hit a practice drone? (Absent in a room.) */
+  hitDrone?(a: THREE.Vector3, b: THREE.Vector3): boolean;
 }
 
 const MAX_MISSILES = 8;
@@ -170,6 +172,7 @@ export class PowerWorld {
           done = true;
         }
       }
+      if (!done && m.owner === self && this.hooks.hitDrone?.(m.prev, m.head)) done = true;
       // any missile on one of your folded groups breaks it
       if (!done) for (const c of clusters) {
         const d = this.segmentDistance(m.prev, m.head, this.v2.set(c.x, c.y, c.z));

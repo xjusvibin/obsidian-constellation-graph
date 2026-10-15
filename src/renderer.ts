@@ -284,7 +284,8 @@ export class ConstellationRenderer implements GraphRenderer {
       grabbed: kind => this.pilot.receivePickup(kind),
       explode: (x, y, z, size, color) => { this.remote.explode(x, y, z, size, color); this.shockwave(x, y, z, size); },
       sound: kind => this.pilot.playSound(kind),
-      pilotPosition: (id, out) => (id === this.selfId ? this.pilot.shipPosition(out) : this.remote.pilotPosition(id, out)),
+      pilotPosition: (id, out) => (id === this.selfId ? this.pilot.shipPosition(out) : id.startsWith("drone:") ? this.pilot.dronePosition(id, out) : this.remote.pilotPosition(id, out)),
+      hitDrone: (a, b) => this.pilot.droneMissileHit(a, b),
     });
 
     this.canvas.addEventListener("pointermove", this.onPointerMove);

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { buildShip, paintShip, SHIP_SCALE, type Ship } from "./ship";
 import { hitRadius } from "./weapons";
+import { MISSILE_DAMAGE, MISSILE_FUSE } from "./powerups";
 
 /** Practice drones for flying alone: a few target ships circle your constellation; shoot them all and a faster, tougher wave follows. Nothing here touches the network. */
 export interface WaveSpec { count: number; hp: number; speed: number }
@@ -160,6 +161,34 @@ export class DroneField {
       if (best === null || a < best) best = a;
     }
     return best;
+  }
+
+  /** The live drones as lock-on targets (the same shape as another pilot), with ids like "drone:3". */
+  targets(from: THREE.Vector3): { id: string; name: string; x: number; y: number; z: number; dist: number }[] {
+    const out: { id: string; name: string; x: number; y: number; z: number; dist: number }[] = [];
+    this.drones.forEach((d, i) => { if (d.alive) out.push({ id: `drone:${i}`, name: "Drone", x: d.pos.x, y: d.pos.y, z: d.pos.z, dist: from.distanceTo(d.pos) }); });
+    return out;
+  }
+
+  /** Where a drone is, for a missile that is locked on to it. */
+  positionOf(id: string, out: THREE.Vector3): boolean {
+    const d = id.startsWith("drone:") ? this.drones[Number(id.slice(6))] : undefined;
+    if (!d?.alive) return false;
+    out.copy(d.pos); return true;
+  }
+
+  /** A missile flew from `a` to `b`: did it get within its fuse distance of a drone? Damages that drone. */
+  missileHit(a: THREE.Vector3, b: THREE.Vector3): { index: number; killed: boolean; at: THREE.Vector3 } | null {
+    let hit: { index: number; killed: boolean; at: THREE.Vector3 } | null = null;
+    const ab = this.tmpV.copy(b).sub(a), len2 = ab.lengthSq();
+    this.drones.forEach((d, index) => {
+      if (!d.alive || hit) return;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((d.pos.x - a.x) * ab.x + (d.pos.y - a.y) * ab.y + (d.pos.z - a.z) * ab.z) / len2)) : 0;
+      const px = a.x + ab.x * t, py = a.y + ab.y * t, pz = a.z + ab.z * t;
+      if (Math.hypot(px - d.pos.x, py - d.pos.y, pz - d.pos.z) <= MISSILE_FUSE * 1.5) hit = { index, killed: false, at: new THREE.Vector3(px, py, pz) };
+    });
+    if (hit) { const h = hit as { index: number; killed: boolean; at: THREE.Vector3 }; h.killed = this.damage(h.index, MISSILE_DAMAGE); }
+    return hit;
   }
 
   /** Damage one drone. Returns true when it is destroyed. */

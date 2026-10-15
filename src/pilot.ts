@@ -180,7 +180,7 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["Click", "F"], label: "Fire", codes: [null, "KeyF"] },
     { caps: ["R"], label: "Switch blaster / cannon", codes: ["KeyR"] },
     { caps: ["M"], label: "Missile (or right-click)", codes: ["KeyM"] },
-    { caps: ["T"], label: p => p.multiplayer ? "Lock a pilot (missiles home)" : "Lock a pilot (in a room)", codes: ["KeyT"] },
+    { caps: ["T"], label: p => p.multiplayer ? "Lock a target (missiles home)" : "Lock a drone (missiles home)", codes: ["KeyT"] },
     { caps: ["G"], label: p => p.multiplayer ? "Warp is off in a room" : "Warp to target", codes: ["KeyG"] },
     { caps: ["H"], label: p => p.multiplayer ? "Warp is off in a room" : "Back to the hub", codes: ["KeyH"] },
     { caps: ["B"], label: "Fold a group (Shift: all)", codes: ["KeyB"] },
@@ -806,17 +806,40 @@ export class PilotController {
   /** T locks the pilot nearest your crosshair (in front of you, within range); T again lets go. Missiles you fire then home on them. */
   private toggleLock(): void {
     if (this.lockedPilot) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock released"); return; }
-    if (!this.opts.multiplayer) { this.host.onState(true, "Locking needs other pilots: join a room"); return; }
+    const targets = this.lockTargets();
+    if (!this.opts.multiplayer && !targets.length) { this.host.onState(true, this.opts.drones ? "Nothing to lock yet" : "Locking needs a drone (turn on practice drones) or other pilots in a room"); return; }
     const fwd = this.fwdV.set(0, 0, -1).applyQuaternion(this.quat);
     let best: { id: string; name: string } | null = null, bestDot = 0.8;
-    for (const t of this.host.remoteTargets()) {
+    for (const t of targets) {
       if (t.dist > 1100 || t.dist < 5) continue;
       const dot = ((t.x - this.pos.x) * fwd.x + (t.y - this.pos.y) * fwd.y + (t.z - this.pos.z) * fwd.z) / t.dist;
       if (dot > bestDot) { bestDot = dot; best = t; }
     }
-    if (!best) { this.host.onState(true, "No pilot in front of you to lock"); return; }
+    if (!best) { this.host.onState(true, this.opts.multiplayer ? "No pilot in front of you to lock" : "No drone in front of you to lock"); return; }
     this.lockedPilot = best.id; this.audio.lock(true);
     this.host.onState(true, `Locked on ${best.name}: your missiles will home`);
+  }
+
+  /** What T can lock: the other pilots in a room, or the practice drones when flying alone. */
+  private lockTargets(): readonly { id: string; name: string; x: number; y: number; z: number; dist: number }[] {
+    return this.opts.multiplayer ? this.host.remoteTargets() : this.drones.active ? this.drones.targets(this.pos) : [];
+  }
+
+  /** Where a locked drone is (for a homing missile). */
+  dronePosition(id: string, out: THREE.Vector3): boolean { return this.drones.positionOf(id, out); }
+
+  /** A missile of yours reached a practice drone. Returns true when it did (the missile goes off). */
+  droneMissileHit(a: THREE.Vector3, b: THREE.Vector3): boolean {
+    if (!this.drones.active) return false;
+    const h = this.drones.missileHit(a, b); if (!h) return false;
+    this.hitConfirmed();
+    if (h.killed) {
+      this.spawnBurstAt(h.at.x, h.at.y, h.at.z, 12); this.audio.pickup(); this.tutorial?.note("kill");
+      const left = this.drones.info.alive;
+      this.host.onState(true, left ? `Drone down. ${left} left` : `Wave ${this.drones.info.wave} cleared`);
+    }
+    this.showDrones();
+    return true;
   }
 
   /** The bracket on the locked pilot, and letting go if they have left or been destroyed. */
@@ -824,7 +847,7 @@ export class PilotController {
     const r = this.lockReticle;
     r.visible = false;
     if (!this.lockedPilot) return;
-    const t = this.host.remoteTargets().find(x => x.id === this.lockedPilot);
+    const t = this.lockTargets().find(x => x.id === this.lockedPilot);
     if (!t) { this.lockedPilot = null; this.audio.lock(false); this.host.onState(true, "Lock lost"); return; }
     if (!this.opts.wireframe || this.health <= 0 || this.watching) return;
     r.visible = true; r.position.set(t.x, t.y, t.z);
