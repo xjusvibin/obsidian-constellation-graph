@@ -64,7 +64,7 @@ function baseRadius(deg: number): number {
 }
 
 function pilotOptions(s: ConstellationSettings, multiplayer = false) {
-  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, color: s.pilotColor, sound: s.pilotSound, drones: s.pilotDrones, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
+  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, color: s.pilotColor, sound: s.pilotSound, drones: s.pilotDrones, tips: s.pilotTips, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
 }
 
 export function webglAvailable(): boolean {
@@ -250,6 +250,7 @@ export class ConstellationRenderer implements GraphRenderer {
       onState: (active, text) => this.onPilotState(active, text),
       leave: () => this.setPilot(false),
       setVolume: v => this.cb.onVolume?.(v),
+      tipsDone: () => this.cb.onTipsDone?.(),
       onNetworkPose: pose => this.cb.onNetworkPose?.(pose),
       onNetworkShot: shot => this.cb.onNetworkShot?.(shot),
       showScores: on => this.cb.onScores?.(on),

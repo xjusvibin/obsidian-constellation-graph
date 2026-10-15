@@ -8,6 +8,7 @@ import type { Pose, ShotMsg } from "./multiplayer";
 import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
 import { DroneField } from "./drones";
+import { Tutorial } from "./tutorial";
 import { padName, pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, BOLT_REACH, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
@@ -45,6 +46,8 @@ export interface PilotHost {
   leave(): void;
   /** The volume was changed with the keys (0 to 1); remember it. */
   setVolume(volume: number): void;
+  /** The first-flight tips were finished: stop showing them. */
+  tipsDone(): void;
   /** Multiplayer: your ship's pose (about twenty times a second), and a bolt you have fired. */
   onNetworkPose(pose: Pose): void;
   onNetworkShot(shot: ShotMsg): void;
@@ -75,6 +78,8 @@ export interface PilotOptions {
   mouse: "capture" | "cursor";
   /** Flying alone: practice drones circle the constellation to shoot at. */
   drones: boolean;
+  /** Show the first-flight tips (until you finish them once). */
+  tips: boolean;
   /** In a room: everyone flies the same ship (fixed speed), there is no warping, and ships can be shot down. */
   multiplayer: boolean;
 }
@@ -288,6 +293,9 @@ export class PilotController {
   private boostFx: HTMLDivElement;
   private drones: DroneField;                // practice targets when flying alone
   private droneChip: HTMLDivElement;
+  private tipChip: HTMLDivElement;
+  private tutorial: Tutorial | null = null;
+  private tipTimer = 0;
   private padChip: HTMLDivElement;             // the controller readout: its name, lit while you press it
   private padChipText = "";
   private boltLines: THREE.LineSegments;
@@ -377,6 +385,7 @@ export class PilotController {
     this.boostFx = this.hud.createDiv({ cls: "cg-pilot-boostfx" });
     this.padChip = this.hud.createDiv({ cls: "cg-pilot-pad cg-hidden" });
     this.droneChip = this.hud.createDiv({ cls: "cg-pilot-drones cg-hidden" });
+    this.tipChip = this.hud.createDiv({ cls: "cg-pilot-tip cg-hidden", attr: { role: "status" } });
     this.drones = new DroneField(this.scene);
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
     this.ringInner = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-inner" });
@@ -535,6 +544,8 @@ export class PilotController {
 
     if (!this.opts.multiplayer && this.opts.drones) { const b = this.host.bounds(); this.drones.start([b.cx, b.cy, b.cz], b.radius, this.cruise); this.showDrones(true); }
 
+    this.startTips();
+
     this.container.classList.add("cg-piloting");
     this.hud.hidden = false;
     this.boltLines.visible = true;
@@ -586,6 +597,7 @@ export class PilotController {
     if (this.locked) document.exitPointerLock();
     this.audio.stop();
     this.drones.stop(); this.droneChip.classList.add("cg-hidden");
+    window.clearTimeout(this.tipTimer); this.tutorial = null; this.tipChip.classList.add("cg-hidden");
     this.keys.clear(); this.firing = false; this.warp = null; this.bolts.length = 0;
     for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down");
     for (const b of this.bursts) b.line.visible = false;
@@ -730,6 +742,17 @@ export class PilotController {
     const text = name ? `Controller: ${name}${this.padUsed ? "" : " (press any button)"}` : "";
     if (text !== this.padChipText) { this.padChipText = text; this.padChip.textContent = text; this.padChip.classList.toggle("cg-hidden", !text); }
     this.padChip.classList.toggle("cg-on", active);
+  }
+
+  /** The first-flight tips: on in a solo flight until you have done each thing once, then they go away for good. */
+  private startTips(): void {
+    window.clearTimeout(this.tipTimer);
+    if (this.opts.multiplayer || !this.opts.tips) { this.tutorial = null; this.tipChip.classList.add("cg-hidden"); return; }
+    this.tutorial = new Tutorial((text, done) => {
+      this.tipChip.textContent = text; this.tipChip.classList.remove("cg-hidden"); this.tipChip.classList.toggle("cg-done", done);
+      if (done) { this.host.tipsDone(); this.tipTimer = window.setTimeout(() => { this.tipChip.classList.add("cg-hidden"); this.tutorial = null; }, 7000); }
+    });
+    this.tutorial.start();
   }
 
   /** The practice-drone readout at the top of the view: the wave, how many are left, and your total. */
@@ -904,6 +927,11 @@ export class PilotController {
     if ((this.firing || k.has("KeyF") || pd.fire) && this.cooldown <= 0 && (this.locked || k.has("KeyF") || pd.fire || this.opts.mouse === "cursor")) this.fire();
 
     if (this.frame % 2 === 0) this.updateAim();
+    if (this.tutorial) {
+      if (thrust !== 0) this.tutorial.note("thrust");
+      if (Math.abs(this.spin.x) + Math.abs(this.spin.y) > 0.15) this.tutorial.note("steer");
+      if (this.boosting) this.tutorial.note("boost");
+    }
     this.updateBolts(dt);
     if (this.drones.active) {
       if (this.drones.update(dt, this.clock)) { this.showDrones(true); this.host.onState(true, `Wave ${this.drones.info.wave}: ${this.drones.info.total} drones`); }
@@ -1230,6 +1258,7 @@ export class PilotController {
     if (this.bolts.length >= MAX_BOLTS) this.bolts.shift();
     const from = this.muzzle(gun, new THREE.Vector3());
     const kind: 0 | 1 = cannon ? 1 : 0;
+    this.tutorial?.note("fire");
     if (this.drones.active) { // a practice drone in the line of fire takes the hit, if it is nearer than whatever you were aiming at
       const n = i >= 0 ? this.host.nodes()[i] : null, to = n ? this.hitA.set(n.x, n.y, n.z) : point;
       const dir = this.hitB.copy(to).sub(from), reach = Math.min(BOLT_REACH, dir.length());
@@ -1238,7 +1267,7 @@ export class PilotController {
         point = hit.point; i = -1; cl = -1;
         this.hitConfirmed();
         if (this.drones.damage(hit.index, damageAt(kind, hit.dist))) {
-          this.spawnBurstAt(hit.point.x, hit.point.y, hit.point.z, 9); this.audio.pickup();
+          this.spawnBurstAt(hit.point.x, hit.point.y, hit.point.z, 9); this.audio.pickup(); this.tutorial?.note("kill");
           const left = this.drones.info.alive;
           this.host.onState(true, left ? `Drone down. ${left} left` : `Wave ${this.drones.info.wave} cleared`);
         }

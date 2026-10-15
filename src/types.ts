@@ -79,6 +79,8 @@ export interface RendererCallbacks {
   onNetworkGrab?(pickup: number): void;
   /** The pilot changed the volume with the keys; save it. */
   onVolume?(volume: number): void;
+  /** The first-flight tips were finished. */
+  onTipsDone?(): void;
   /** The scoreboard key went down (true) or up (false). */
   onScores?(on: boolean): void;
 }

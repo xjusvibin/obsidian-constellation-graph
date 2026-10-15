@@ -98,6 +98,7 @@ export class ConstellationApp {
       onOpen: (i, t) => this.openIndex(i, t),
       onActivity: (k, text) => this.onActivity(k, text),
       onPilot: (a, text) => this.onPilot(a, text),
+      onTipsDone: () => { this.settings = { ...this.settings, pilotTips: false }; this.host.updateSettings?.({ pilotTips: false }); },
       onVolume: v => { this.settings = { ...this.settings, pilotVolume: v }; this.host.updateSettings?.({ pilotVolume: v }); },
       onNetworkPose: pose => this.session.sendPose(pose),
       onNetworkShot: shot => this.session.sendShot(shot),

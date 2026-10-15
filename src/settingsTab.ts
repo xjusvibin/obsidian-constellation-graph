@@ -110,6 +110,8 @@ const SECTIONS: Section[] = [
         desc: "Engine, blasters and warp, made on the fly. Nothing plays unless you are flying." },
       { key: "pilotVolume", name: "Volume", control: { kind: "slider", min: 0, max: 1, step: 0.05 },
         desc: "While you fly, the minus and equals keys turn it down and up." },
+      { key: "pilotTips", name: "First-flight tips", control: { kind: "toggle" },
+        desc: "A short checklist the first time you fly alone. It turns itself off when you finish it; turn it on to see it again." },
       { key: "pilotDrones", name: "Practice drones", control: { kind: "toggle" },
         desc: "When you fly alone, a few target drones circle your graph to shoot at, in waves. They are off in a room." },
     ],
