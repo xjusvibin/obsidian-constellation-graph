@@ -1,3 +1,4 @@
+import { sanitizeBindings, type Bindings } from "./keymap";
 export type MotionLevel = "off" | "calm" | "lively";
 export type PaletteName = "vibrant" | "colorblind" | "theme";
 export type GroupBy = "folder" | "tag" | "none";
@@ -36,6 +37,7 @@ export interface ConstellationSettings {
   pilotColor: string;
   pilotDrones: boolean;
   pilotTips: boolean;
+  keyBindings: Bindings;
   padSensitivity: number;
   padDeadzone: number;
   aimAssist: boolean;
@@ -87,6 +89,7 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   pilotColor: "auto",
   pilotDrones: true,
   pilotTips: true,
+  keyBindings: {},
   padSensitivity: 1,
   padDeadzone: 0.16,
   aimAssist: true,
@@ -159,6 +162,7 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     pilotSound: bool(r.pilotSound, d.pilotSound),
     pilotDrones: bool(r.pilotDrones, d.pilotDrones),
     pilotTips: bool(r.pilotTips, d.pilotTips),
+    keyBindings: sanitizeBindings(r.keyBindings),
     padSensitivity: clamp(r.padSensitivity, 0.3, 3, d.padSensitivity),
     padDeadzone: clamp(r.padDeadzone, 0.05, 0.4, d.padDeadzone),
     aimAssist: bool(r.aimAssist, d.aimAssist),

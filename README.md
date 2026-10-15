@@ -139,6 +139,10 @@ The controls are also shown on screen as a small panel of key caps that light up
 - Pilot mode needs motion, so it stays off when your system asks for reduced motion (the search, note list and details panel still work). It is not available without WebGL.
 
 - **Controller.** A game controller works with the standard layout, with no setup, laid out like Rocket League: left stick moves and strafes, right stick looks, right trigger fires, left trigger launches a missile, B is the afterburner, A goes up (a click of the left stick goes down), X brakes, Y changes the view, the bumpers roll (left bumper left, right bumper right), the d-pad locks a pilot (up), switches weapon (left) and returns to the hub (down), and Back holds the scoreboard.
+- **Practice drones.** Flying alone, red target drones circle your graph in waves: each wave is a little bigger, tougher and faster. Shoot them all and the next wave comes. They are never there in a room, and a setting turns them off.
+- **First-flight tips.** The first time you fly alone, a short checklist (fly, steer, fire, afterburner, shoot a drone) appears and finishes itself. It never comes back unless you turn it on again in the settings.
+- **Volume and keys.** The **-** and **=** keys turn the volume down and up while you fly. The command **Edit pilot keys** (command palette) lets you rebind every flight action; a few keys (Escape, P, Tab) are kept for leaving flight and the scoreboard.
+- **Controller settings.** Look speed, dead zone and an aim-assist option (the right stick slows a little when the crosshair is near a note or a drone) are in the settings.
 - **Ship colours.** Choose a colour in the Fly together panel (or in the settings); other pilots see it. **Remember the camera** (a setting, off by default) opens the graph from the angle you left it.
 
 ## Fly together (multiplayer)

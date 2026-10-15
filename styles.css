@@ -325,3 +325,7 @@
 .cg-pilot-tip { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 12px; background: rgba(10, 13, 22, 0.82); border: 1px solid #7fe8ff; font-size: 14px; font-weight: 600; color: #e9fbff; pointer-events: none; text-align: center; max-width: 80%; }
 .cg-pilot-tip.cg-hidden { display: none; }
 .cg-pilot-tip.cg-done { border-color: #7dffa8; color: #dfffe9; }
+
+/* Pilot keys editor */
+.cg-keys-modal .cg-keys-note { min-height: 1.4em; color: var(--text-accent); margin-bottom: 8px; }
+.cg-keys-modal .cg-keys-list { max-height: 60vh; overflow-y: auto; }

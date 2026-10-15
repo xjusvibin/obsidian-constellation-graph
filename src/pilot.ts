@@ -9,6 +9,7 @@ import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
 import { DroneField } from "./drones";
 import { Tutorial } from "./tutorial";
+import { buildTranslator, keyLabel, translateCode, type Bindings, type Translator } from "./keymap";
 import { assistFactor, padName, pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, BOLT_REACH, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
@@ -80,6 +81,8 @@ export interface PilotOptions {
   drones: boolean;
   /** Show the first-flight tips (until you finish them once). */
   tips: boolean;
+  /** Keys the reader has rebound (action to key code). */
+  bindings: Bindings;
   /** Game controller: look speed, the stick's dead zone, and a little help settling on a target. */
   padSensitivity: number;
   padDeadzone: number;
@@ -299,6 +302,8 @@ export class PilotController {
   private droneChip: HTMLDivElement;
   private tipChip: HTMLDivElement;
   private tutorial: Tutorial | null = null;
+  private translator: Translator = buildTranslator({});
+  private capDefs: { el: HTMLElement; code: string; fallback: string }[] = [];
   private tipTimer = 0;
   private padChip: HTMLDivElement;             // the controller readout: its name, lit while you press it
   private padChipText = "";
@@ -416,6 +421,7 @@ export class PilotController {
     this.destroyedText.hidden = true;
     this.readout.hidden = true;
     this.keysPanel = this.buildKeysPanel();
+    this.translator = buildTranslator(opts.bindings); this.refreshCaps();
   }
 
   /** The controls, drawn as key caps in a quiet glass panel. The caps light up as you press the keys. */
@@ -433,6 +439,7 @@ export class PilotController {
           caps.appendChild(cap);
           const code = row.codes[i];
           if (code) {
+            this.capDefs.push({ el: cap, code, fallback: c });
             const list = this.keyCaps.get(code) ?? []; list.push(cap); this.keyCaps.set(code, list);
             if (code === "ShiftLeft") this.keyCaps.set("ShiftRight", list);
           }
@@ -447,6 +454,16 @@ export class PilotController {
 
   private refreshKeyLabels(): void {
     for (const { el, row } of this.keyLabels) { const t = typeof row.label === "function" ? row.label(this) : row.label; if (el.textContent !== t) el.textContent = t; }
+  }
+
+  /** The controls panel shows the keys the reader has chosen. */
+  private refreshCaps(): void {
+    const physical = new Map<string, string>();
+    for (const [phys, def] of this.translator.toDefault) physical.set(def, phys);
+    for (const { el, code, fallback } of this.capDefs) {
+      const text = physical.has(code) ? keyLabel(physical.get(code) ?? "") : fallback;
+      if (el.textContent !== text) el.textContent = text;
+    }
   }
 
   private lightKey(code: string, on: boolean): void { for (const el of this.keyCaps.get(code) ?? []) el.classList.toggle("cg-down", on); }
@@ -471,6 +488,7 @@ export class PilotController {
     const mouseChanged = opts.mouse !== this.opts.mouse;
     const shipChanged = opts.ship !== this.opts.ship;
     this.opts = { ...opts };
+    this.translator = buildTranslator(opts.bindings); this.refreshCaps();
     if (shipChanged) { // a different ship: swap the model, everything else stays
       const old = this.ship;
       this.scene.remove(old.group); old.lights.forEach(l => this.scene.remove(l)); old.dispose();
@@ -714,12 +732,13 @@ export class PilotController {
       e.preventDefault(); e.stopImmediatePropagation();
       return;
     }
-    if (!OWNED.has(e.code)) return;
+    const code = translateCode(this.translator, e.code); // a key the reader has rebound becomes the action's usual key
+    if (code === null || !OWNED.has(code)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (e.repeat) return;
-    this.keys.add(e.code);
-    this.lightKey(e.code, true);
-    switch (e.code) {
+    this.keys.add(code);
+    this.lightKey(code, true);
+    switch (code) {
       case "KeyK": this.showKeys(!this.keysShown); break;
       case "Minus": case "NumpadSubtract": this.changeVolume(-0.1); break;
       case "Equal": case "NumpadAdd": this.changeVolume(0.1); break;
@@ -777,7 +796,10 @@ export class PilotController {
   private switchWeapon(): void { this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); }
   private switchView(): void { this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); }
 
-  private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code); this.lightKey(e.code, false); if (e.code === "Tab") this.host.showScores(false); };
+  private onKeyUp = (e: KeyboardEvent) => {
+    const code = translateCode(this.translator, e.code); if (code === null) return;
+    this.keys.delete(code); this.lightKey(code, false); if (code === "Tab") this.host.showScores(false);
+  };
   private onBlur = () => { this.keys.clear(); this.firing = false; this.host.showScores(false); for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down"); };
 
   /** T locks the note under the crosshair as a flight target (G warps to it); T again, or T over nothing, lets go. */

@@ -4,6 +4,7 @@ import { RELEASES_API, compareVersions, parseLatest } from "./update";
 import { ConstellationSettings, DEFAULT_SETTINGS, sanitizeSettings } from "./settings";
 import { ConstellationSettingTab } from "./settingsTab";
 import { ConstellationView, VIEW_TYPE } from "./view";
+import { KeysModal } from "./keysModal";
 
 const RESETS_COLOURS: (keyof ConstellationSettings)[] = ["palette", "groupBy", "folderDepth"];
 
@@ -27,6 +28,7 @@ export default class ConstellationPlugin extends Plugin {
       void this.activate().then(() => this.views()[0]?.openJoin(code));
     });
     this.addCommand({ id: "tour", name: "Tour the linked notes", callback: () => void this.activate().then(() => this.views()[0]?.tour()) });
+    this.addCommand({ id: "pilot-keys", name: "Edit pilot keys", callback: () => new KeysModal(this.app, this.settings.keyBindings, b => this.update({ keyBindings: b })).open() });
     this.addCommand({ id: "check-updates", name: "Check for a new version", callback: () => void this.checkForUpdates(true) });
     this.app.workspace.onLayoutReady(() => {
       if (this.settings.openOnStartup) void this.activate();
