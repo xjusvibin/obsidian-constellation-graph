@@ -1,6 +1,6 @@
 import type { RoomMember } from "./room";
 import type { LinkState } from "./multiplayer";
-import { formatRoomCode, parseRoomCode } from "./netcrypto";
+import { formatRoomCode, inviteLink, parseRoomCode } from "./netcrypto";
 import { SLOT_COLORS } from "./remote";
 
 export interface PanelHost {
@@ -82,8 +82,10 @@ export class MultiplayerPanel {
     this.codeText = this.roomRow.createEl("strong", { cls: "cg-multiplayer-codeshow" });
     const copy = createEl("button", { cls: "cg-btn", text: "Copy code", attr: { type: "button" } });
     const leave = createEl("button", { cls: "cg-btn", text: "Leave", attr: { type: "button" } });
-    this.roomRow.append(copy, leave);
+    const invite = createEl("button", { cls: "cg-btn", text: "Copy invite link", attr: { type: "button", title: "A link that opens Obsidian with the room code filled in" } });
+    this.roomRow.append(copy, invite, leave);
     copy.addEventListener("click", () => { void navigator.clipboard?.writeText(formatRoomCode(this.code)).then(() => this.say("Room code copied. Send it to your friends.", false), () => this.say("Could not copy; select the code and copy it by hand.", true)); });
+    invite.addEventListener("click", () => { void navigator.clipboard?.writeText(inviteLink(this.code)).then(() => this.say("Invite link copied. Send it to your friends: it opens Obsidian with the code filled in.", false), () => this.say("Could not copy; use Copy code instead.", true)); });
     leave.addEventListener("click", () => this.host.leave());
     this.roomRow.hidden = true;
 
@@ -121,6 +123,14 @@ export class MultiplayerPanel {
   private setBusy(b: boolean): void { this.busy = b; this.makeBtn.disabled = this.joinBtn.disabled = b; }
 
   say(text: string, error: boolean): void { this.statusEl.textContent = text; this.statusEl.classList.toggle("cg-error", error); this.helpEl.hidden = !error; if (!error) this.helpEl.open = false; }
+
+  /** Fill in a room code (from an invite link) and put the cursor on Join. Nothing is joined until the reader presses it. */
+  prefillJoin(code: string): void {
+    this.setOpen(true);
+    this.codeInput.value = formatRoomCode(code);
+    this.joinBtn.focus({ preventScroll: true });
+    this.say("Room code filled in from the invite link. Press Join to enter the room.", false);
+  }
 
   setOpen(open: boolean): void {
     this.el.hidden = !open;

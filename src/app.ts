@@ -424,6 +424,9 @@ export class ConstellationApp {
     this.announce(`Image saved as ${name}`);
   }
 
+  /** An invite link was opened: show the Fly together panel with the code filled in. */
+  openJoin(code: string): void { this.panel.prefillJoin(code); this.multiBtn.setAttribute("aria-expanded", "true"); this.announce("Room code filled in. Press Join."); }
+
   private toggleFold(): void {
     this.renderer.toggleAllGroups?.();
     const on = !!this.renderer.anyCollapsed;

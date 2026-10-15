@@ -139,7 +139,7 @@ The controls are also shown on screen as a small panel of key caps that light up
 
 ## Fly together (multiplayer)
 
-Up to four pilots can share one sky, each with their own constellation. Click the people button on the toolbar, choose **Make a room**, and send the ten-character room code to your friends; they paste it under **Join**. Then everyone presses **P** to fly.
+Up to four pilots can share one sky, each with their own constellation. Click the people button on the toolbar, choose **Make a room**, and send the ten-character room code to your friends; they paste it under **Join**. Or press **Copy invite link** and send that: opening it starts Obsidian with the code already filled in (the link holds only the code, and nothing is joined until your friend presses **Join**). Then everyone presses **P** to fly.
 
 - **What is shared:** the *shape* of your constellation (anonymous points, links and group colours) and where your ship is. **Never** note titles, paths, tags or contents: remote constellations have no labels, and nothing a remote pilot sends can reach a note, a file or Obsidian itself.
 - **How it connects:** there is no server to run. Pilots find each other through a public relay (the free [ntfy.sh](https://ntfy.sh) service by default, or one you choose in the settings). Every message through the relay is sealed with a key made from the room code, so the relay sees only noise, and nobody without the code can listen or take part. The relay carries only a handful of connection-setup messages; after that, pilots talk to each other directly (WebRTC), and your computer's address is visible to the other pilots and to the STUN servers that help the connection through your router.

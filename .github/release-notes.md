@@ -6,6 +6,8 @@ Pilot mode becomes a sandbox, and you can now fly together.
 
 **Lock-on:** the T key now locks the pilot in front of your crosshair (it used to lock a note, which did nothing useful). Your missiles home on a locked pilot, turning only so fast so a boosting pilot can still dodge, and the lead pip follows them.
 
+**Invite links:** the Fly together panel has a Copy invite link button. Opening the link starts Obsidian with the room code filled in; your friend still presses Join.
+
 **Pilot mode is a sandbox.** It never selects or opens notes, and the rest of the plugin works as before outside it. Animate and Supernova are off while you fly or are in a room.
 
 - **Two weapons:** a blaster that runs hot and overheats, and a cannon that hits three times as hard but carries limited rounds per life (R switches).

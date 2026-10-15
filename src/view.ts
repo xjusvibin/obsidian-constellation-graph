@@ -13,6 +13,9 @@ export class ConstellationView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private plugin: ConstellationPlugin) { super(leaf); }
 
+  /** Called by an invite link. */
+  openJoin(code: string): void { this.ca?.openJoin(code); }
+
   getViewType(): string { return VIEW_TYPE; }
   getDisplayText(): string { return "Starfield graph"; }
   getIcon(): string { return "orbit"; }

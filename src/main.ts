@@ -1,4 +1,5 @@
 import { Notice, Plugin, requestUrl } from "obsidian";
+import { parseRoomCode } from "./netcrypto";
 import { RELEASES_API, compareVersions, parseLatest } from "./update";
 import { ConstellationSettings, DEFAULT_SETTINGS, sanitizeSettings } from "./settings";
 import { ConstellationSettingTab } from "./settingsTab";
@@ -19,6 +20,12 @@ export default class ConstellationPlugin extends Plugin {
     this.addCommand({ id: "open", name: "Open graph view", callback: () => void this.activate() });
     this.addSettingTab(new ConstellationSettingTab(this.app, this));
     // wait until the workspace has been restored, otherwise the saved layout would open over it
+    // an invite link (obsidian://starfield-join?code=...) opens the graph with the room code filled in; the reader still presses Join
+    this.registerObsidianProtocolHandler("starfield-join", params => {
+      const code = parseRoomCode(String(params.code ?? ""));
+      if (!code) { new Notice("That invite link does not have a valid room code."); return; }
+      void this.activate().then(() => this.views()[0]?.openJoin(code));
+    });
     this.addCommand({ id: "check-updates", name: "Check for a new version", callback: () => void this.checkForUpdates(true) });
     this.app.workspace.onLayoutReady(() => {
       if (this.settings.openOnStartup) void this.activate();

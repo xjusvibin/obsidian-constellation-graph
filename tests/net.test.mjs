@@ -200,3 +200,11 @@ test("a vault that is too large to share is refused with a clear message", () =>
   const nodes = Array.from({ length: net.MAX_SHARED_NODES + 1 }, (_, i) => ({ id: "n" + i, name: "t", group: "g", deg: 0 }));
   assert.throws(() => net.makeAnonymousTopology({ groups: [{ key: "g", label: "g", color: "#000000", count: nodes.length }], nodes, links: [] }, new Map(), 1), /supports up to/);
 });
+
+test("an invite link carries only the room code, and the code comes back out of it", () => {
+  const code = net.makeRoomCode(), link = net.inviteLink(code);
+  assert.ok(link.startsWith("obsidian://starfield-join?code="));
+  assert.equal(net.parseRoomCode(new URL(link).searchParams.get("code")), code);
+  assert.equal(link.includes("relay"), false);
+  assert.equal(net.parseRoomCode(new URL("obsidian://starfield-join?code=nonsense").searchParams.get("code")), null);
+});

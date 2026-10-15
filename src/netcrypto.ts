@@ -22,6 +22,9 @@ export function makeRoomCode(): string {
 export function formatRoomCode(code: string): string { return code.length === CODE_LENGTH ? `${code.slice(0, 5)}-${code.slice(5)}` : code; }
 
 /** Accepts the code as typed or pasted (spaces, dashes, any case) and returns it clean, or null if it cannot be a code. */
+/** The link that opens Obsidian and fills in a room code: obsidian://starfield-join?code=ABCDEFGHJK (the code only; nothing is joined until the reader presses Join). */
+export function inviteLink(code: string): string { return `obsidian://starfield-join?code=${encodeURIComponent(code)}`; }
+
 export function parseRoomCode(input: string): string | null {
   const c = input.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return c.length === CODE_LENGTH && [...c].every(ch => CODE_CHARS.includes(ch)) ? c : null;
