@@ -309,9 +309,23 @@ export class MultiplayerSession {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") { window.clearTimeout(peer.graceTimer); peer.connected = true; this.cb.link(id, "connected"); this.updateStatus(); }
       else if (pc.connectionState === "failed" || pc.connectionState === "closed") this.lose(id);
-      else if (pc.connectionState === "disconnected") { window.clearTimeout(peer.graceTimer); peer.graceTimer = window.setTimeout(() => this.lose(id), DISCONNECT_GRACE_MS); }
+      else if (pc.connectionState === "disconnected") {
+        window.clearTimeout(peer.graceTimer); peer.graceTimer = window.setTimeout(() => this.lose(id), DISCONNECT_GRACE_MS);
+        void this.restartIce(id); // a short network blip (wifi roaming, a sleeping laptop) can often be mended without leaving the room
+      }
     };
     return peer;
+  }
+
+  /** Try to mend a dropped link in place: the pilot with the lower id makes a fresh offer that restarts the connection search. If it does not work, the usual grace period ends and the pilot is dropped. */
+  private async restartIce(id: string): Promise<void> {
+    const peer = this.peers.get(id);
+    if (!peer || this.selfId >= id || peer.pc.signalingState !== "stable" || !this.active) return;
+    try {
+      await peer.pc.setLocalDescription(await peer.pc.createOffer({ iceRestart: true }));
+      await this.waitForGathering(peer.pc);
+      if (this.peers.get(id) === peer) this.room?.signal(id, { description: { type: "offer", sdp: peer.pc.localDescription?.sdp ?? "" } });
+    } catch { /* the grace timer will decide */ }
   }
 
   private waitForGathering(pc: RTCPeerConnection): Promise<void> {
