@@ -5,7 +5,7 @@ import { buildShip, shipIndex, SHIP_SCALE, type Ship, type ShipKind } from "./sh
 import { buildCockpit, type Cockpit } from "./cockpit";
 import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
-import { BLASTER, CANNON, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
+import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
 export interface PilotHost {
@@ -113,14 +113,8 @@ const WARP_MIN_MS = 1200;  // a warp is fast travel, but it still takes time: lo
 const WARP_MAX_MS = 6000;
 const WARP_SPEED = 7;      // warp speed, in cruise speeds
 
-const FIRE_GAP = 0.16;     // blaster: seconds between shots
-const HEAT_PER_SHOT = 0.1; // blaster: how much each shot heats it (it overheats at 1)
-const HEAT_COOL = 0.26;    // blaster: how fast it cools, per second
-const HEAT_RESET = 0.4;    // after overheating, it works again once it is this cool
-const CANNON_GAP = 0.5;    // cannon: seconds between rounds
 const BOOST_COMBAT_PAUSE = 2.0; // seconds the afterburner tank does not refill after you are hit: you cannot simply run, recharge and return
 const KILL_HEAL = 30;      // health you get back for destroying another pilot (out of 100)
-const AMMO_MAX = 36;       // cannon: rounds per life
 const BOLT_FADE = 0.12;    // seconds a bolt lingers after it lands
 const MAX_BOLTS = 10;
 const RANGE = 900;         // how far a shot at nothing travels

@@ -191,6 +191,7 @@ npm install
 npm run dev          # esbuild watch, writes main.js
 npm run build        # type-check, then minified production main.js
 npm test             # unit tests for the room, encryption and what is shared
+npm run balance      # prints time-to-kill for every gun and range from the real constants
 npm run harness -- "<path to a vault>"   # builds dev/harness.html, a browser preview using that vault's notes as mock data
 npm run install-local -- "<path to a vault>"   # build and copy into <vault>/.obsidian/plugins/constellation-graph
 ```

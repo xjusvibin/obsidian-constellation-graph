@@ -64,3 +64,11 @@ export const SHIELD_MAX = 40;
 export const SHIELD_DELAY = 3.5;  // seconds without a hit before the shield starts to come back
 export const SHIELD_REGEN = 14;   // shield points per second once it does
 export const HULL_MAX = 100;
+
+/** Rates of fire and the blaster's heat, shared by the ship and by the balance report (dev/balance-report.mjs). */
+export const FIRE_GAP = 0.16;      // blaster: seconds between shots
+export const HEAT_PER_SHOT = 0.1;  // blaster: how much each shot heats it (it overheats at 1)
+export const HEAT_COOL = 0.26;     // blaster: how fast it cools, per second
+export const HEAT_RESET = 0.4;     // after overheating, it works again once it is this cool
+export const CANNON_GAP = 0.5;     // cannon: seconds between rounds
+export const AMMO_MAX = 36;        // cannon: rounds per life

@@ -9,6 +9,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
+    "balance": "node dev/balance-report.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
     "harness": "node dev/build-harness.mjs",
     "install-local": "node dev/install-local.mjs"
