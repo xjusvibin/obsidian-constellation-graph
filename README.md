@@ -156,7 +156,7 @@ Up to four pilots can share one sky, each with their own constellation. Click th
 
 ## Settings
 
-Open on startup (off by default; saved in the vault, so it applies to anyone who opens it), flow (off, calm, lively), camera rotation and speed, glow and bloom, node size, link brightness, spacing (how far apart notes and groups sit), palette, label size and count, grouping (folder, first tag, none), folder depth, excluded folders, whether to show notes with no links, and whether to ring the open note. Pilot mode has its own section: enable, fold groups when flying, ship, mouse mode (capture or cursor), mouse sensitivity, invert vertical look, flight speed, agility, view (chase or cockpit), wireframe effects, sound and volume. Multiplayer has its own too: your name, the relay, and an optional TURN server. *Tell me about new versions* is off by default.
+Open on startup (off by default; saved in the vault, so it applies to anyone who opens it), flow (off, calm, lively), camera rotation and speed, quality (automatic, low, balanced or high), glow and bloom, node size, link brightness, spacing (how far apart notes and groups sit), palette, label size and count, grouping (folder, first tag, none), folder depth, excluded folders, whether to show notes with no links, and whether to ring the open note. Pilot mode has its own section: enable, fold groups when flying, ship, mouse mode (capture or cursor), mouse sensitivity, invert vertical look, flight speed, agility, view (chase or cockpit), wireframe effects, sound and volume. Multiplayer has its own too: your name, the relay, and an optional TURN server. *Tell me about new versions* is off by default.
 
 ## Privacy and safety
 

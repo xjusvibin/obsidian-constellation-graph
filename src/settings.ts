@@ -14,6 +14,7 @@ export interface ConstellationSettings {
   updateCheckedAt: number;
   updateNotified: string;
   bloom: boolean;
+  quality: "auto" | "low" | "balanced" | "high";
   labelCount: number;
   labelSize: number;
   palette: PaletteName;
@@ -56,6 +57,7 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   updateCheckedAt: 0,
   updateNotified: "",
   bloom: true,
+  quality: "auto",
   labelCount: 14,
   labelSize: 13,
   palette: "vibrant",
@@ -108,6 +110,7 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     updateCheckedAt: typeof r.updateCheckedAt === "number" && isFinite(r.updateCheckedAt) ? r.updateCheckedAt : 0,
     updateNotified: typeof r.updateNotified === "string" && /^\d+\.\d+\.\d+$/.test(r.updateNotified) ? r.updateNotified : "",
     bloom: bool(r.bloom, d.bloom),
+    quality: pick(r.quality, ["auto", "low", "balanced", "high"] as const, d.quality),
     labelCount: Math.round(clamp(r.labelCount, 0, 40, d.labelCount)),
     labelSize: Math.round(clamp(r.labelSize, 10, 24, d.labelSize)),
     palette: pick(r.palette, ["vibrant", "colorblind", "theme"] as const, d.palette),

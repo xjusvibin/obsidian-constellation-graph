@@ -58,6 +58,8 @@ const SECTIONS: Section[] = [
         desc: "How far apart notes and groups sit: it scales the repel force and the link distance. The layout is rebuilt when you change it." },
       { key: "bloom", name: "Bloom effect", control: { kind: "toggle" },
         desc: "Soft light bleed around bright notes. Turn off on slower computers." },
+      { key: "quality", name: "Quality", control: { kind: "dropdown", options: { auto: "Automatic", low: "Low (fastest, no glow pass)", balanced: "Balanced", high: "High (sharpest)" } },
+        desc: "Low turns the glow pass off and draws at normal resolution; High draws at the screen's full sharpness. Automatic starts sharp and lowers itself if the view runs slowly." },
       { key: "palette", name: "Colour palette", control: { kind: "dropdown", options: { vibrant: "Vibrant", colorblind: "Colour-blind safe", theme: "Match theme accent" } },
         desc: "The colour-blind-safe palette stays distinguishable under the common forms of colour blindness.", rebuild: true },
       { key: "highlightActive", name: "Outline the open note", control: { kind: "toggle" },

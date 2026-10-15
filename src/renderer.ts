@@ -138,6 +138,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private visible = true;
   private contextLost = false;
   private degraded = false;
+  private ratioForced = false; // the slow-machine fallback has dropped the resolution
   private raf = 0;
   private last = 0;
   private fitDone = false;
@@ -319,6 +320,8 @@ export class ConstellationRenderer implements GraphRenderer {
     const hc = effectiveHighContrast(s);
     this.uniforms.uGlow.value = hc ? 0.35 : s.glow;
     this.uniforms.uNodeScale.value = s.nodeSize;
+    const cap = s.quality === "low" ? 1 : s.quality === "balanced" ? 1.5 : 2, want = Math.min(window.devicePixelRatio || 1, this.ratioForced ? 1 : cap);
+    if (Math.abs(this.renderer.getPixelRatio() - want) > 0.01) { this.renderer.setPixelRatio(want); this.resize(); }
     if (this.sim.setSpacing(s.spacing) && this.sim.nodes.length) { this.sim.relayout(); this.frameB = null; }
     this.uniforms.uContrast.value = hc ? 1 : 0;
     this.bloom.strength = (hc ? 0 : 0.35 * s.glow) + this.novaBloom;
@@ -386,7 +389,7 @@ export class ConstellationRenderer implements GraphRenderer {
   capture(): Promise<Blob | null> {
     if (this.contextLost) return Promise.resolve(null);
     try {
-      if (this.settings.bloom && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+      if (this.settings.bloom && this.settings.quality !== "low" && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0) this.composer.render(); else this.renderer.render(this.scene, this.camera);
       return new Promise(resolve => this.canvas.toBlob(b => resolve(b), "image/png")); // the snapshot is taken as toBlob is called, before the buffer is cleared
     } catch { return Promise.resolve(null); }
   }
@@ -928,14 +931,14 @@ export class ConstellationRenderer implements GraphRenderer {
 
     this.stars.rotation.y += this.paused || this.still ? 0 : dt * 0.004;
     this.updateLabels();
-    if (this.settings.bloom && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    if (this.settings.bloom && this.settings.quality !== "low" && !this.degraded && !effectiveHighContrast(this.settings) && this.bloom.strength > 0) this.composer.render(); else this.renderer.render(this.scene, this.camera);
 
     // protect slow machines: drop the glow pass first, then lower resolution
     this.slow = dt > 0.04 ? this.slow + 1 : Math.max(0, this.slow - 1);
     if (this.slow > 90) {
       this.slow = 0;
       if (!this.degraded) this.degraded = true;
-      else if (this.renderer.getPixelRatio() > 1) { this.renderer.setPixelRatio(1); this.resize(); }
+      else if (this.renderer.getPixelRatio() > 1) { this.ratioForced = true; this.renderer.setPixelRatio(1); this.resize(); }
     }
   };
 
