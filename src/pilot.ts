@@ -5,6 +5,7 @@ import { buildShip, shipIndex, SHIP_SCALE, type Ship, type ShipKind } from "./sh
 import { buildCockpit, type Cockpit } from "./cockpit";
 import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
+import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
@@ -42,6 +43,8 @@ export interface PilotHost {
   /** Multiplayer: your ship's pose (about twenty times a second), and a bolt you have fired. */
   onNetworkPose(pose: Pose): void;
   onNetworkShot(shot: ShotMsg): void;
+  /** A missile leaves your ship (the world flies it and tells the room). */
+  fireMissile(id: string, from: THREE.Vector3, dir: THREE.Vector3, speed: number): void;
   /** The scoreboard key (Tab) went down or up. */
   showScores(on: boolean): void;
   /** The other pilots flying right now (reused every frame), the ones you could watch, and where a pilot is (for the spectator camera). */
@@ -114,6 +117,7 @@ const WARP_MAX_MS = 6000;
 const WARP_SPEED = 7;      // warp speed, in cruise speeds
 
 const BOOST_COMBAT_PAUSE = 2.0; // seconds the afterburner tank does not refill after you are hit: you cannot simply run, recharge and return
+const MISSILE_GAP = 0.9;   // seconds between missiles
 const KILL_HEAL = 30;      // health you get back for destroying another pilot (out of 100)
 const BOLT_FADE = 0.12;    // seconds a bolt lingers after it lands
 const MAX_BOLTS = 10;
@@ -138,7 +142,7 @@ const Z_AXIS = new THREE.Vector3(0, 0, 1);
 /** Keys the pilot owns. Anything else (Enter, /, ?, L, ...) is left to the normal keyboard handling. */
 const OWNED = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyC", "KeyQ", "KeyE", "ShiftLeft", "ShiftRight",
-  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "Tab",
+  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "KeyM", "Tab",
 ]);
 
 type KeyRow = { caps: string[]; label: string | ((p: PilotController) => string); codes: (string | null)[] };
@@ -155,6 +159,7 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["Mouse"], label: p => p.cursorMode ? "Steer: move away from centre" : "Steer", codes: [null] },
     { caps: ["Click", "F"], label: "Fire", codes: [null, "KeyF"] },
     { caps: ["R"], label: "Switch blaster / cannon", codes: ["KeyR"] },
+    { caps: ["M"], label: "Missile (or right-click)", codes: ["KeyM"] },
     { caps: ["T"], label: "Lock target", codes: ["KeyT"] },
     { caps: ["G"], label: p => p.multiplayer ? "Warp is off in a room" : "Warp to target", codes: ["KeyG"] },
     { caps: ["H"], label: p => p.multiplayer ? "Warp is off in a room" : "Back to the hub", codes: ["KeyH"] },
@@ -230,6 +235,8 @@ export class PilotController {
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
   private died = false;
+  private missiles = 0;        // missiles you are carrying (pickups give them)
+  private missileCooldown = 0;
   private shield = SHIELD_MAX;
   private lastHitAt = -1e9;
   private shieldBar!: HTMLDivElement;
@@ -516,6 +523,7 @@ export class PilotController {
     this.container.addEventListener("keyup", this.onKeyUp, true);
     this.container.addEventListener("blur", this.onBlur);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
+    this.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerenter", this.onPointerEnter);
@@ -541,6 +549,7 @@ export class PilotController {
     this.container.removeEventListener("keyup", this.onKeyUp, true);
     this.container.removeEventListener("blur", this.onBlur);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+    this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerenter", this.onPointerEnter);
@@ -683,6 +692,7 @@ export class PilotController {
       case "KeyR": this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); break;
       case "KeyH": this.returnToHub(); break;
       case "KeyN": this.cycleWatch(); break;
+      case "KeyM": this.fireMissile(); break;
       case "Tab": this.host.showScores(true); break;
       case "KeyV": this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); break;
     }
@@ -700,12 +710,14 @@ export class PilotController {
   }
 
   private onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) { e.preventDefault(); if (this.opts.mouse !== "capture" || this.locked) this.fireMissile(); return; } // right-click: a missile
     if (e.button !== 0) return;
     if (this.opts.mouse === "capture" && !this.locked) { this.requestLock(); return; }
     this.container.focus({ preventScroll: true });
     this.firing = true; this.clickCap?.classList.add("cg-down");
     this.fire();
   };
+  private onContextMenu = (e: Event) => e.preventDefault(); // right-click fires a missile, so no menu
   private onPointerUp = () => { this.firing = false; this.clickCap?.classList.remove("cg-down"); };
 
   /** Cursor steering: remember where the pointer is over the scene. Over a panel or button the scene gets no events, so steering pauses there. */
@@ -794,7 +806,7 @@ export class PilotController {
     this.audio.update(Math.min(1, speed / (this.cruise * 1.6)), this.boosting, thrust !== 0 || strafe !== 0 || lift !== 0);
 
     this.updateAimPoint();
-    this.cooldown = Math.max(0, this.cooldown - dt);
+    this.cooldown = Math.max(0, this.cooldown - dt); this.missileCooldown = Math.max(0, this.missileCooldown - dt);
     this.heat = Math.max(0, this.heat - HEAT_COOL * dt);
     if (this.overheated && this.heat <= HEAT_RESET) this.overheated = false;
     if (this.health > 0 && this.clock - this.lastHitAt > SHIELD_DELAY * 1000) this.shield = Math.min(SHIELD_MAX, this.shield + SHIELD_REGEN * dt);
@@ -1057,10 +1069,10 @@ export class PilotController {
     this.energyFill.style.width = (this.energy * 100).toFixed(1) + "%";
     this.energyFill.classList.toggle("cg-low", this.boostLocked);
     if (this.weapon === 0) { // the blaster shows its heat; the cannon shows its rounds
-      this.weaponLabel.textContent = this.overheated ? "BLASTER OVERHEATED" : "BLASTER";
+      this.weaponLabel.textContent = (this.overheated ? "BLASTER OVERHEATED" : "BLASTER") + `  ·  MISSILES ${this.missiles}`;
       this.weaponFill.style.width = (clamp(this.heat, 0, 1) * 100).toFixed(1) + "%";
     } else {
-      this.weaponLabel.textContent = `CANNON ${this.ammo}/${AMMO_MAX}`;
+      this.weaponLabel.textContent = `CANNON ${this.ammo}/${AMMO_MAX}  ·  MISSILES ${this.missiles}`;
       this.weaponFill.style.width = (clamp(this.ammo / AMMO_MAX, 0, 1) * 100).toFixed(1) + "%";
     }
     this.weaponBox.classList.toggle("cg-hot", this.weapon === 0 && (this.overheated || this.heat > 0.75));
@@ -1226,7 +1238,17 @@ export class PilotController {
     const ab = this.hitA.copy(b).sub(a), len2 = ab.lengthSq();
     const t = len2 > 0 ? clamp(this.hitB.copy(this.pos).sub(a).dot(ab) / len2, 0, 1) : 0;
     if (this.hitC.copy(a).addScaledVector(ab, t).distanceTo(this.pos) > hitRadius(travelled, this.vel.length())) return false;
-    let dmg = damageAt(kind, travelled);
+    return this.applyDamage(damageAt(kind, travelled), a);
+  }
+
+  /**
+   * Take damage from anything: the shield first, then the hull. `from` is a point toward whatever hit you (for the arc on the
+   * screen). False if you cannot be hurt right now (not in a fight, dead, watching, or just respawned).
+   */
+  applyDamage(damage: number, from: THREE.Vector3): boolean {
+    if (!this.active || !this.opts.multiplayer || this.watching || this.health <= 0 || this.clock < this.protectedUntil) return false;
+    const a = from;
+    let dmg = damage;
     const hadShield = this.shield > 0, soaked = Math.min(this.shield, dmg); // the shield takes the hit first
     this.shield -= soaked; dmg -= soaked;
     this.showHitFrom(a, dmg <= 0);
@@ -1256,6 +1278,37 @@ export class PilotController {
     this.health = Math.min(HULL_MAX, this.health + KILL_HEAL); this.shield = SHIELD_MAX; // a kill patches the hull and recharges the shield
     this.audio.lock(true);
     this.host.onState(true, `Kill: +${KILL_HEAL} health`);
+  }
+
+  /** Where your ship is, if it is flying and alive. */
+  shipPosition(out: THREE.Vector3): boolean {
+    if (!this.active || this.health <= 0 || this.watching) return false;
+    out.copy(this.pos); return true;
+  }
+
+  /** A pickup was collected. */
+  receivePickup(kind: PickupKind): void {
+    if (kind === 0) { this.missiles = Math.min(MISSILES_MAX, this.missiles + 1); this.host.onState(true, `Missile: ${this.missiles} ready (M or right-click)`); }
+    else if (kind === 1) { this.shield = SHIELD_MAX; this.host.onState(true, "Shield cell: shield full"); }
+    else { this.energy = 1; this.boostLocked = false; this.holdLeft = 0; this.host.onState(true, "Overdrive: afterburner full"); }
+  }
+
+  playSound(kind: "pickup" | "launch" | "boom" | "break"): void {
+    if (!this.active) return;
+    if (kind === "pickup") this.audio.pickup(); else if (kind === "launch") this.audio.missileLaunch(); else this.audio.boom();
+  }
+
+  /** Fire a missile at what the crosshair is on (a folded group, a note) or straight ahead. */
+  private fireMissile(): void {
+    if (this.health <= 0 || this.watching || this.missileCooldown > 0) return;
+    if (this.missiles <= 0) { if (this.clock - this.lastDry > 700) { this.lastDry = this.clock; this.audio.empty(); this.host.onState(true, "No missiles: fly into a red pickup"); } return; }
+    this.missiles--; this.missileCooldown = MISSILE_GAP;
+    const from = this.muzzle(0, new THREE.Vector3());
+    const cl = this.host.pickClusterAt(this.aimX, this.aimY, FIRE_SLACK), i = cl >= 0 ? -1 : this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
+    const body = cl >= 0 ? this.host.clusterBodies().find(x => x.g === cl) : undefined, n = i >= 0 ? this.host.nodes()[i] : null;
+    const to = body ? this.hitA.set(body.x, body.y, body.z) : n ? this.hitA.set(n.x, n.y, n.z) : this.hitA.set(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
+    const dir = this.hitB.copy(to).sub(from).normalize();
+    this.host.fireMissile(crypto.randomUUID(), from, dir, this.vel.length());
   }
 
   /** The note you have locked as a flight target, or -1. */

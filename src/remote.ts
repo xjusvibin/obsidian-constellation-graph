@@ -188,6 +188,9 @@ export class RemoteWorld {
     this.bolts.push({ owner: id, id: shot.id, kind, speed, o, d, travelled: lead, head: o.clone().addScaledVector(d, lead), prev: o.clone() });
   }
 
+  /** A burst of wireframe at a point (a missile going off, a group breaking). */
+  explode(x: number, y: number, z: number, size: number, color: string): void { this.burst(x, y, z, size, color); }
+
   showHit(hit: HitMsg): void { this.burst(hit.at[0], hit.at[1], hit.at[2], 6, "#ffb27a"); }
 
   remove(id: string): void {

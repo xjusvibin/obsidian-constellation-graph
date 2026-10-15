@@ -12,6 +12,7 @@
  * Never: note titles, paths, tags or contents.
  */
 
+import { validBurst, validGrab, validMissile, type BurstMsg, type MissileMsg } from "./powerups";
 import type { GraphData, RawNode, SimNode } from "./types";
 import { RelayRoom, type RoomMember, type TransportFactory } from "./room";
 import type { PostFn } from "./relay";
@@ -160,6 +161,10 @@ export interface SessionCallbacks {
   kill(victim: string, killer: string | null): void;
   /** The round-trip time to a pilot, in milliseconds (measured every couple of seconds). */
   ping(id: string, ms: number): void;
+  /** Another pilot fired a missile, broke one of their folded groups into meteors, or picked up a pickup. */
+  missile(from: string, missile: MissileMsg): void;
+  burst(from: string, burst: BurstMsg): void;
+  grab(from: string, pickup: number): void;
   removed(id: string): void;
 }
 
@@ -357,6 +362,9 @@ export class MultiplayerSession {
     }
     if (m.t === "shot" && validShot(m.shot)) { this.cb.shot(id, m.shot); return; }
     if (m.t === "hit" && validHit(m.hit, this.selfId) && m.hit.target === id) { this.cb.hit(id, m.hit); return; }
+    if (m.t === "missile" && validMissile(m.missile)) { this.cb.missile(id, m.missile); return; }
+    if (m.t === "burst" && validBurst(m.burst)) { this.cb.burst(id, m.burst); return; }
+    if (m.t === "grab" && validGrab(m.id)) { this.cb.grab(id, m.id); return; }
     if (m.t === "ping" && Number.isSafeInteger(m.n) && typeof m.at === "number" && Number.isFinite(m.at)) { this.sendTo(id, { t: "pong", n: m.n, at: m.at }); return; }
     if (m.t === "pong" && typeof m.at === "number" && Number.isFinite(m.at)) {
       const rtt = performance.now() - m.at;
@@ -473,6 +481,9 @@ export class MultiplayerSession {
     }
   }
 
+  sendMissile(missile: MissileMsg): void { this.sendControl({ t: "missile", missile }); }
+  sendBurst(burst: BurstMsg): void { this.sendControl({ t: "burst", burst }); }
+  sendGrab(id: number): void { this.sendControl({ t: "grab", id }); }
   sendShot(shot: ShotMsg): void { this.sendControl({ t: "shot", shot }); }
   /** Tell everyone you were destroyed, and by whom. */
   sendKill(by: string | null): void { this.sendControl({ t: "kill", by }); }

@@ -1,3 +1,5 @@
+import { PowerWorld } from "./powerworld";
+import { pickupLayout, type BurstMsg, type MissileMsg } from "./powerups";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -173,6 +175,10 @@ export class ConstellationRenderer implements GraphRenderer {
   private flashEl: HTMLDivElement;
   private pilot: PilotController;
   private remote: RemoteWorld;
+  private powers: PowerWorld;
+  private powerSeed = "";
+  private powersReady = false;
+  private selfId = "me";
   private multiplayer = false;
   private aim = -1; // the note under the Pilot crosshair
   private pilotAimCluster = -1; // the collapsed group under it
@@ -237,6 +243,10 @@ export class ConstellationRenderer implements GraphRenderer {
       onNetworkPose: pose => this.cb.onNetworkPose?.(pose),
       onNetworkShot: shot => this.cb.onNetworkShot?.(shot),
       showScores: on => this.cb.onScores?.(on),
+      fireMissile: (id, from, dir, speed) => {
+        this.powers.launch(id, this.selfId, from, dir, speed);
+        this.cb.onNetworkMissile?.({ id, o: [from.x, from.y, from.z], d: [dir.x, dir.y, dir.z], s: Math.round(speed) });
+      },
       remoteTargets: () => this.remote.targets,
       watchable: () => this.remote.watchable,
       followState: (id, p, q, v) => this.remote.followState(id, p, q, v),
@@ -245,6 +255,24 @@ export class ConstellationRenderer implements GraphRenderer {
     this.remote = new RemoteWorld(this.scene, this.labelLayer, this.camera, () => this.nodeMaterial(), {
       hitTest: (a, b, kind, travelled) => this.pilot.hitTest(a, b, kind, travelled),
       struck: (id, shotId, at) => { this.cb.onNetworkHit?.(id, shotId, at); if (this.pilot.takeDeath()) this.cb.onNetworkKill?.(id); },
+    });
+
+    this.powers = new PowerWorld(this.scene, {
+      selfId: () => this.selfId,
+      ship: out => this.pilot.shipPosition(out),
+      hitShip: (damage, from, by, missileId) => {
+        if (!this.pilot.applyDamage(damage, from)) return false;
+        if (by && missileId) this.cb.onNetworkHit?.(by, missileId, [from.x, from.y, from.z]); // the shooter sees it land
+        if (this.pilot.takeDeath()) this.cb.onNetworkKill?.(by);
+        return true;
+      },
+      clusters: () => this.collapsedBodies(),
+      breakCluster: g => this.expandGroup(g),
+      sendBurst: b => this.cb.onNetworkBurst?.(b),
+      sendGrab: id => this.cb.onNetworkGrab?.(id),
+      grabbed: kind => this.pilot.receivePickup(kind),
+      explode: (x, y, z, size, color) => this.remote.explode(x, y, z, size, color),
+      sound: kind => this.pilot.playSound(kind),
     });
 
     this.canvas.addEventListener("pointermove", this.onPointerMove);
@@ -366,8 +394,9 @@ export class ConstellationRenderer implements GraphRenderer {
   }
 
   /** Start or stop a room: every constellation holds still, and flying follows the room's rules. */
-  setMultiplayer(active: boolean): void {
+  setMultiplayer(active: boolean, selfId = "me"): void {
     if (active === this.multiplayer) return;
+    this.selfId = active ? selfId : "me"; this.powers.setCombat(active); this.powersReady = false;
     if (this.pilot.active) this.pilot.exit(false); // flying starts over with the room's rules
     this.multiplayer = active;
     if (!active) { this.remote.clear(); this.sim.setOrigin(0, 0, 0); this.frameB = null; this.dirty = true; }
@@ -376,6 +405,18 @@ export class ConstellationRenderer implements GraphRenderer {
   }
 
   /** Move your constellation to your corner of the shared space (the corner depends on your place in the room). */
+  setPowerSeed(seed: string): void { this.powerSeed = seed; this.powersReady = false; }
+  addRemoteMissile(id: string, m: MissileMsg, from: string): void { this.powers.launch(id, from, new THREE.Vector3(...m.o), new THREE.Vector3(...m.d), m.s, true); this.stale = true; }
+  addRemoteBurst(b: BurstMsg): void { this.powers.addBurst(b, performance.now()); this.stale = true; }
+  remoteGrab(pickup: number): void { this.powers.remoteGrab(pickup, performance.now()); }
+
+  /** Lay the pickups out: around the room's middle in a room (from the room code), or around your own constellation when you fly alone. */
+  private refreshPowers(): void {
+    this.powersReady = true;
+    if (this.multiplayer) this.powers.setLayout(pickupLayout(this.powerSeed || "room", [0, 0, 0], 750));
+    else { const b = this.sim.bounds(); this.powers.setLayout(pickupLayout("solo", [b.cx, b.cy, b.cz], Math.max(120, b.radius * 1.3))); }
+  }
+
   setWorldOrigin(slot: number): void {
     const o = WORLD_ORIGINS[Math.max(0, Math.min(3, Math.floor(slot)))];
     this.sim.setOrigin(o[0], o[1], o[2]); this.frameB = null; this.dirty = true; this.stale = true;
@@ -396,7 +437,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   /** You destroyed another pilot. */
   rewardKill(): void { this.pilot.healOnKill(); }
-  showRemoteHit(hit: HitMsg): void { this.remote.showHit(hit); this.pilot.hitConfirmed(); this.stale = true; }
+  showRemoteHit(hit: HitMsg): void { this.remote.showHit(hit); this.powers.detonate(hit.shotId); this.pilot.hitConfirmed(); this.stale = true; }
   removeRemote(id: string): void { this.remote.remove(id); this.stale = true; }
 
   /** Enter or leave free flight. The orbit controls are parked while it runs, and the view eases back out when it ends. */
@@ -569,7 +610,7 @@ export class ConstellationRenderer implements GraphRenderer {
     ] as [string, EventListener][]) this.canvas.removeEventListener(ev, fn);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown, true);
     this.canvas.removeEventListener("wheel", this.onWheel);
-    this.pilot.destroy(); this.remote.dispose();
+    this.pilot.destroy(); this.remote.dispose(); this.powers.dispose();
     this.disposeNodes();
     this.stars.geometry.dispose(); (this.stars.material as THREE.Material).dispose();
     // EffectComposer.dispose() does not free its passes, and browsers cap live WebGL contexts
@@ -924,6 +965,11 @@ export class ConstellationRenderer implements GraphRenderer {
       this.updateCamera(now);
       const zoomed = this.stepZoom(dt);
       camMoved = this.controls.update(dt) || zoomed;
+    }
+    if (this.pilot.active || this.multiplayer) {
+      if (!this.powersReady) this.refreshPowers();
+      this.powers.setVisible(this.pilot.active);
+      this.powers.update(dt, performance.now());
     }
     if (this.remote.any) { this.remote.update(dt, this.canvas.clientWidth, this.canvas.clientHeight); this.stale = true; }
     if (!(moving || animating || camMoved || this.stale || this.tween || this.follow >= 0)) return; // fully at rest: draw nothing

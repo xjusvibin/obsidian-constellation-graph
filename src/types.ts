@@ -1,3 +1,4 @@
+import type { BurstMsg, MissileMsg } from "./powerups";
 import type { ConstellationSettings } from "./settings";
 import type { AnonymousTopology, HitMsg, Pose, ShotMsg } from "./multiplayer";
 
@@ -67,7 +68,11 @@ export interface RendererCallbacks {
   onNetworkShot?(shot: ShotMsg): void;
   onNetworkHit?(shooterId: string, shotId: string, at: [number, number, number]): void;
   /** You were destroyed by this pilot's bolt. */
-  onNetworkKill?(killerId: string): void;
+  onNetworkKill?(killerId: string | null): void;
+  /** Your missile, a group you broke (its meteors), and a pickup you took. */
+  onNetworkMissile?(missile: MissileMsg): void;
+  onNetworkBurst?(burst: BurstMsg): void;
+  onNetworkGrab?(pickup: number): void;
   /** The scoreboard key went down (true) or up (false). */
   onScores?(on: boolean): void;
 }
@@ -104,6 +109,11 @@ export interface GraphRenderer {
   toggleAllGroups?(): void;
   /** Multiplayer (not available without WebGL). */
   setMultiplayer?(active: boolean, selfId?: string): void;
+  /** The seed the room's pickups are laid out from (the room code), and what other pilots do with them. */
+  setPowerSeed?(seed: string): void;
+  addRemoteMissile?(id: string, missile: MissileMsg, from: string): void;
+  addRemoteBurst?(burst: BurstMsg): void;
+  remoteGrab?(pickup: number): void;
   /** You destroyed another pilot (heals you a little). */
   rewardKill?(): void;
   /** The current view as a PNG (the 3D scene only: no note names are drawn into it), or null if it cannot be made. */

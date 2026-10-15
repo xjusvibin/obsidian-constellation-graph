@@ -96,6 +96,9 @@ export class ConstellationApp {
       onNetworkShot: shot => this.session.sendShot(shot),
       onNetworkHit: (shooter, shotId, at) => this.session.sendHit({ shooter, target: this.session.selfId, shotId, at }),
       onNetworkKill: killer => { this.session.sendKill(killer); this.onKill(this.session.selfId, killer); },
+      onNetworkMissile: m => this.session.sendMissile(m),
+      onNetworkBurst: b => this.session.sendBurst(b),
+      onNetworkGrab: id => this.session.sendGrab(id),
       onScores: on => this.showBoard(on),
     };
     let made: GraphRenderer | null = null;
@@ -168,6 +171,9 @@ export class ConstellationApp {
       hit: (_id, hit) => this.renderer.showRemoteHit?.(hit),
       kill: (victim, killer) => this.onKill(victim, killer),
       ping: (id, ms) => { this.ping.set(id, ms); this.refreshPanel(); },
+      missile: (from, m) => this.renderer.addRemoteMissile?.(m.id, m, from),
+      burst: (_id, b) => this.renderer.addRemoteBurst?.(b),
+      grab: (_id, pickup) => this.renderer.remoteGrab?.(pickup),
       removed: id => { this.link.delete(id); this.health.delete(id); this.ping.delete(id); this.renderer.removeRemote?.(id); this.refreshPanel(); },
     }, () => ({ data: this.data, nodes: this.renderer.nodes }), () => this.sessionOptions());
     this.panel = new MultiplayerPanel(this.root, {
@@ -331,7 +337,8 @@ export class ConstellationApp {
     const inRoom = !!selfId && members.some(m => m.id === selfId);
     if (inRoom && !this.mpActive) {
       this.mpActive = true; this.score.clear();
-      this.renderer.setMultiplayer?.(true);
+      this.renderer.setPowerSeed?.(this.session.code);
+      this.renderer.setMultiplayer?.(true, selfId);
       this.renderer.setWorldOrigin?.(members.find(m => m.id === selfId)?.slot ?? 0);
       this.session.publishGraph();
       this.announce("In a room. Press P to fly.");

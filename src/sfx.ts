@@ -266,6 +266,29 @@ export class PilotAudio {
     this.tone("sine", 780, 1250, 0.12, 0.12, { t: t + 0.02, wet: 0.3 });
   }
 
+  /** A pickup collected: a quick rising two-note chime. */
+  pickup(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    [880, 1320].forEach((fr, i) => this.tone("triangle", fr, fr * 1.02, 0.25, 0.16, { t: t + i * 0.07, wet: 0.4 }));
+  }
+
+  /** A missile leaving the rail: a rising whoosh. */
+  missileLaunch(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    this.hiss("bandpass", 300, 2600, 0.5, 0.3, { t, q: 0.9, wet: 0.3 });
+    this.tone("sawtooth", 90, 240, 0.45, 0.2, { t, lp: [500, 2200], wet: 0.2, attack: 0.04 });
+  }
+
+  /** A missile or a broken group going off: a deep boom and a crackle. */
+  boom(): void {
+    if (!this.ok()) return;
+    const t = this.ctx!.currentTime;
+    this.tone("sine", 110, 30, 0.6, 0.8, { t, wet: 0.35 });
+    this.hiss("lowpass", 2200, 150, 0.5, 0.5, { t, wet: 0.4 });
+  }
+
   /** Your shield soaking a hit: a bright, glassy zap, lighter than a hull hit. */
   shieldHit(): void {
     if (!this.ok()) return;
