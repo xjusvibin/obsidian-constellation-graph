@@ -60,6 +60,7 @@ export class ConstellationApp {
   private health = new Map<string, { hp: number; flying: boolean }>();
   private mpStatus = ""; private mpError = false;
   private score = new Map<string, { kills: number; deaths: number }>();
+  private ping = new Map<string, number>();
   private feed!: HTMLElement;              // kill announcements, top of the view
   private board!: HTMLElement;             // the scoreboard (hold Tab while flying)
   private mpActive = false;               // true while you are in a room
@@ -166,7 +167,8 @@ export class ConstellationApp {
       shot: (id, shot) => this.renderer.addRemoteShot?.(id, shot),
       hit: (_id, hit) => this.renderer.showRemoteHit?.(hit),
       kill: (victim, killer) => this.onKill(victim, killer),
-      removed: id => { this.link.delete(id); this.health.delete(id); this.renderer.removeRemote?.(id); this.refreshPanel(); },
+      ping: (id, ms) => { this.ping.set(id, ms); this.refreshPanel(); },
+      removed: id => { this.link.delete(id); this.health.delete(id); this.ping.delete(id); this.renderer.removeRemote?.(id); this.refreshPanel(); },
     }, () => ({ data: this.data, nodes: this.renderer.nodes }), () => this.sessionOptions());
     this.panel = new MultiplayerPanel(this.root, {
       name: () => this.settings.multiplayerName,
@@ -320,7 +322,7 @@ export class ConstellationApp {
   }
 
   private refreshPanel(): void {
-    this.panel.setState({ code: this.session.code, selfId: this.session.selfId, members: this.members, link: this.link, health: this.health, score: this.score, status: this.mpStatus, error: this.mpError });
+    this.panel.setState({ code: this.session.code, selfId: this.session.selfId, members: this.members, link: this.link, health: this.health, score: this.score, ping: this.ping, status: this.mpStatus, error: this.mpError });
   }
 
   /** The room's pilots changed. The first time you are in one: put your constellation in your corner, and share its shape. */
@@ -336,7 +338,7 @@ export class ConstellationApp {
     } else if (!inRoom && this.mpActive) {
       this.mpActive = false;
       this.renderer.setMultiplayer?.(false);
-      this.health.clear(); this.link.clear(); this.score.clear(); this.feed.replaceChildren(); this.board.hidden = true;
+      this.health.clear(); this.link.clear(); this.score.clear(); this.ping.clear(); this.feed.replaceChildren(); this.board.hidden = true;
       if (this.queuedData) { const d = this.queuedData; this.queuedData = null; this.setData(d); }
       this.announce("Left the room");
     }

@@ -145,6 +145,8 @@ export function validHit(value: unknown, self: string): value is HitMsg {
 export interface SessionOptions { relayUrl: string; stun: string[]; turn?: { url: string; username: string; credential: string }; post?: PostFn }
 export type LinkState = "connecting" | "connected" | "lost";
 
+const PING_EVERY_MS = 2000;
+
 export interface SessionCallbacks {
   status(text: string, error?: boolean): void;
   members(members: RoomMember[], selfId: string): void;
@@ -156,6 +158,8 @@ export interface SessionCallbacks {
   hit(from: string, hit: HitMsg): void;
   /** A pilot was destroyed (by another pilot's bolt, or null if unknown). Only the pilot who was hit reports it. */
   kill(victim: string, killer: string | null): void;
+  /** The round-trip time to a pilot, in milliseconds (measured every couple of seconds). */
+  ping(id: string, ms: number): void;
   removed(id: string): void;
 }
 
@@ -177,6 +181,8 @@ export class MultiplayerSession {
   private topology: AnonymousTopology | null = null;
   private revision = 0;
   private pumpTimer = 0;
+  private pingTimer = 0;
+  private pingSeq = 0;
   private poseSequence = 0;
   private closed = true;
 
@@ -203,6 +209,7 @@ export class MultiplayerSession {
     if (this.active) throw new Error("Leave the current room before joining another.");
     if (!window.RTCPeerConnection) throw new Error("This version of Obsidian cannot make the direct connections multiplayer needs.");
     this.closed = false;
+    window.clearInterval(this.pingTimer); this.pingTimer = window.setInterval(() => this.pingAll(), PING_EVERY_MS);
     const opts = this.options();
     const room = this.room = new RelayRoom(opts.relayUrl, {
       roster: (members, selfId) => this.onRoster(members, selfId),
@@ -350,6 +357,12 @@ export class MultiplayerSession {
     }
     if (m.t === "shot" && validShot(m.shot)) { this.cb.shot(id, m.shot); return; }
     if (m.t === "hit" && validHit(m.hit, this.selfId) && m.hit.target === id) { this.cb.hit(id, m.hit); return; }
+    if (m.t === "ping" && Number.isSafeInteger(m.n) && typeof m.at === "number" && Number.isFinite(m.at)) { this.sendTo(id, { t: "pong", n: m.n, at: m.at }); return; }
+    if (m.t === "pong" && typeof m.at === "number" && Number.isFinite(m.at)) {
+      const rtt = performance.now() - m.at;
+      if (rtt >= 0 && rtt < 20_000) this.cb.ping(id, Math.round(rtt));
+      return;
+    }
     if (m.t === "kill") { const by = m.by; if (by === null || (typeof by === "string" && by.length > 0 && by.length <= 64 && by !== id)) this.cb.kill(id, by); return; }
     if (m.type === "topology-chunk") this.acceptTopologyChunk(id, peer, m);
   }
@@ -465,6 +478,18 @@ export class MultiplayerSession {
   sendKill(by: string | null): void { this.sendControl({ t: "kill", by }); }
   sendHit(hit: HitMsg): void { const ch = this.peers.get(hit.shooter)?.control; if (ch?.readyState === "open") try { ch.send(JSON.stringify({ t: "hit", hit })); } catch { /* closing */ } }
 
+  /** Ask every pilot to answer, so the round-trip time to each can be shown. */
+  private pingAll(): void {
+    if (this.closed || !this.peers.size) return;
+    this.pingSeq++;
+    this.sendControl({ t: "ping", n: this.pingSeq, at: performance.now() });
+  }
+
+  private sendTo(id: string, message: object): void {
+    const ch = this.peers.get(id)?.control;
+    if (ch?.readyState === "open" && ch.bufferedAmount < 512_000) try { ch.send(JSON.stringify(message)); } catch { /* closing */ }
+  }
+
   private sendControl(message: object): void {
     const text = JSON.stringify(message);
     for (const peer of this.peers.values()) { const ch = peer.control; if (ch?.readyState === "open" && ch.bufferedAmount < 512_000) try { ch.send(text); } catch { /* closing */ } }
@@ -474,6 +499,7 @@ export class MultiplayerSession {
     if (this.closed) return;
     this.closed = true;
     window.clearInterval(this.pumpTimer); this.pumpTimer = 0;
+    window.clearInterval(this.pingTimer); this.pingTimer = 0;
     for (const id of [...this.peers.keys()]) { this.removePeer(id); this.cb.removed(id); }
     this.room?.leave(); this.room = null;
     this.roster = []; this.topology = null; this.ids.clear(); this.revision = 0; this.poseSequence = 0;

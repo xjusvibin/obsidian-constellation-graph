@@ -218,7 +218,7 @@
 .cg-multiplayer-code { width: 130px; font-family: monospace; text-transform: uppercase; }
 .cg-multiplayer-codeshow { font-family: monospace; font-size: 16px; letter-spacing: 0.08em; margin-right: 4px; user-select: all; }
 .cg-multiplayer-players { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
-.cg-multiplayer-players li { display: grid; grid-template-columns: 12px minmax(60px, 1fr) 72px auto auto; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 12px; }
+.cg-multiplayer-players li { display: grid; grid-template-columns: 12px minmax(60px, 1fr) 72px auto 46px auto; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 12px; }
 .cg-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cg-player-health { width: 72px; height: 8px; accent-color: #ff6c73; }
 .cg-player-state { color: var(--cg-dim); white-space: nowrap; }
@@ -286,3 +286,6 @@
 .cg-pilot-hitarc.cg-show { animation: cg-hitarc 0.9s ease-out; }
 @keyframes cg-hitarc { 0% { opacity: 0.95; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cg-pilot-hitarc.cg-show { animation-duration: 0.01s; } }
+
+.cg-player-ping { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--cg-dim); }
+.cg-ping-good { color: #7dff9a; } .cg-ping-fair { color: #ffd54a; } .cg-ping-poor { color: #ff7a6a; }
