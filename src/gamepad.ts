@@ -3,7 +3,8 @@ export interface PadInput {
   thrust: number; strafe: number; lift: number; roll: number;  // -1..1
   lookX: number; lookY: number;                                 // -1..1, right stick
   fire: boolean; boost: boolean; brake: boolean;
-  missile: boolean; lock: boolean;                              // held; the caller turns these into presses
+  missile: boolean; lock: boolean; weapon: boolean; view: boolean; hub: boolean; // held; the caller turns these into single presses
+  scores: boolean;                                              // held while the scoreboard is wanted
   active: boolean;                                              // anything at all is being asked for
 }
 
@@ -21,15 +22,17 @@ const down = (p: PadLike, i: number): boolean => !!p.buttons[i]?.pressed;
 const trig = (p: PadLike, i: number): boolean => (p.buttons[i]?.value ?? 0) > 0.4 || down(p, i);
 
 export function readPad(p: PadLike | null | undefined): PadInput {
-  const none: PadInput = { thrust: 0, strafe: 0, lift: 0, roll: 0, lookX: 0, lookY: 0, fire: false, boost: false, brake: false, missile: false, lock: false, active: false };
+  const none: PadInput = { thrust: 0, strafe: 0, lift: 0, roll: 0, lookX: 0, lookY: 0, fire: false, boost: false, brake: false, missile: false, lock: false, weapon: false, view: false, hub: false, scores: false, active: false };
   if (!p) return none;
   const thrust = -deadzone(p.axes[1] ?? 0), strafe = deadzone(p.axes[0] ?? 0);
   const lookX = deadzone(p.axes[2] ?? 0), lookY = deadzone(p.axes[3] ?? 0);
   const lift = (down(p, 0) ? 1 : 0) - (down(p, 1) ? 1 : 0);
   const roll = (down(p, 15) ? 1 : 0) - (down(p, 14) ? 1 : 0);
-  const fire = trig(p, 7), brake = trig(p, 6), boost = down(p, 5), missile = down(p, 4), lock = down(p, 2);
-  const active = !!(thrust || strafe || lookX || lookY || lift || roll || fire || brake || boost || missile || lock);
-  return { thrust, strafe, lift, roll, lookX, lookY, fire, boost, brake, missile, lock, active };
+  // the usual shooter layout: right trigger fires, left trigger is the secondary weapon (missile), bumpers and stick clicks are movement modifiers
+  const fire = trig(p, 7), missile = trig(p, 6), boost = down(p, 5) || down(p, 10), brake = down(p, 4);
+  const weapon = down(p, 2), lock = down(p, 3), view = down(p, 12), hub = down(p, 13), scores = down(p, 8);
+  const active = !!(thrust || strafe || lookX || lookY || lift || roll || fire || missile || boost || brake || weapon || lock || view || hub || scores);
+  return { thrust, strafe, lift, roll, lookX, lookY, fire, boost, brake, missile, lock, weapon, view, hub, scores, active };
 }
 
 /** The first controller that is connected and being used, or any connected one. */

@@ -138,7 +138,7 @@ The controls are also shown on screen as a small panel of key caps that light up
 - **Wireframes and sound.** The plane has a glowing wireframe outline, and target brackets, impact bursts and faint shells around each group are drawn in wireframe too (they can be turned off). Engine, blaster, impact and warp sounds are synthesised in the plugin with the Web Audio API, nothing is loaded from a file, and they can be turned off or turned down. Sound mutes when the window loses focus.
 - Pilot mode needs motion, so it stays off when your system asks for reduced motion (the search, note list and details panel still work). It is not available without WebGL.
 
-- **Controller.** A game controller works with the standard layout, with no setup: left stick moves and strafes, right stick looks, right trigger fires, left trigger brakes, right bumper is the afterburner, left bumper a missile, A and B go up and down, X locks a pilot, and the d-pad rolls.
+- **Controller.** A game controller works with the standard layout, with no setup: left stick moves and strafes, right stick looks, right trigger fires, left trigger launches a missile, right bumper (or a click of the left stick) is the afterburner, left bumper brakes, A and B go up and down, X switches weapon, Y locks a pilot, the d-pad rolls left and right, up changes the view and down returns to the hub, and Back holds the scoreboard.
 - **Ship colours.** Choose a colour in the Fly together panel (or in the settings); other pilots see it. **Remember the camera** (a setting, off by default) opens the graph from the angle you left it.
 
 ## Fly together (multiplayer)

@@ -20,8 +20,8 @@ test("left stick up is thrust, right is strafe", () => {
   assert.equal(r.thrust, 1); assert.equal(r.strafe, 1);
 });
 test("buttons map to fire, boost, brake, missile, lift and roll", () => {
-  const r = m.readPad(pad([0, 0, 0, 0], [7, 5, 6, 4, 0, 14]));
-  assert.ok(r.fire && r.boost && r.brake && r.missile);
+  const r = m.readPad(pad([0, 0, 0, 0], [7, 5, 6, 4, 0, 14, 2, 3]));
+  assert.ok(r.fire && r.boost && r.brake && r.missile && r.weapon && r.lock);
   assert.equal(r.lift, 1); assert.equal(r.roll, -1);
 });
 test("pickPad prefers a controller that is being used", () => {

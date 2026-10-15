@@ -238,7 +238,7 @@ export class PilotController {
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
   private pad: PadInput = readPad(null);        // the game controller, if one is plugged in
-  private padMissile = false; private padLock = false; // so a held button counts as one press
+  private padHeld = new Set<string>();           // buttons already counted, so a held button is one press
   private died = false;
   private missiles = 0;        // missiles you are carrying (pickups give them)
   private missileCooldown = 0;
@@ -695,14 +695,17 @@ export class PilotController {
         break;
       }
       case "KeyB": this.foldGroup(e.shiftKey); break;
-      case "KeyR": this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); break;
+      case "KeyR": this.switchWeapon(); break;
       case "KeyH": this.returnToHub(); break;
       case "KeyN": this.cycleWatch(); break;
       case "KeyM": this.fireMissile(); break;
       case "Tab": this.host.showScores(true); break;
-      case "KeyV": this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); break;
+      case "KeyV": this.switchView(); break;
     }
   };
+
+  private switchWeapon(): void { this.weapon = this.weapon === 0 ? 1 : 0; this.audio.lock(this.weapon === 1); this.host.onState(true, this.weapon === 1 ? "Cannon" : "Blaster"); }
+  private switchView(): void { this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); }
 
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code); this.lightKey(e.code, false); if (e.code === "Tab") this.host.showScores(false); };
   private onBlur = () => { this.keys.clear(); this.firing = false; this.host.showScores(false); for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down"); };
@@ -802,10 +805,15 @@ export class PilotController {
     const brake = k.has("KeyX") || pd.brake;
     if (live) { // the right stick looks around like a mouse; the bumpers and X are single presses
       this.mouseDX += pd.lookX * 1100 * dt; this.mouseDY += pd.lookY * 1100 * dt;
-      if (pd.missile && !this.padMissile) this.fireMissile();
-      if (pd.lock && !this.padLock) this.toggleLock();
+      const press = (name: string, on: boolean, act: () => void) => { if (on && !this.padHeld.has(name)) act(); on ? this.padHeld.add(name) : this.padHeld.delete(name); };
+      press("missile", pd.missile, () => this.fireMissile());
+      press("lock", pd.lock, () => this.toggleLock());
+      press("weapon", pd.weapon, () => this.switchWeapon());
+      press("view", pd.view, () => this.switchView());
+      press("hub", pd.hub, () => this.returnToHub());
+      press("scores", pd.scores, () => this.host.showScores(true));
     }
-    this.padMissile = pd.missile; this.padLock = pd.lock;
+    if (!pd.scores && this.padHeld.delete("scores")) this.host.showScores(false);
 
     if (this.warp) { this.stepWarp(); if (thrust || strafe || lift) this.warp = null; } // taking the controls cancels a warp
     const speed01 = clamp(this.vel.length() / (this.cruise * BOOST_TOP), 0, 1);
