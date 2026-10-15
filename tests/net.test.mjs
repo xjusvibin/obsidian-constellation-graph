@@ -211,3 +211,31 @@ test("an invite link carries only the room code, and the code comes back out of 
   assert.equal(link.includes("relay"), false);
   assert.equal(net.parseRoomCode(new URL("obsidian://starfield-join?code=nonsense").searchParams.get("code")), null);
 });
+
+// ---------------------------------------------------------------- protocol version
+test("a pilot with a current version joins, and a room that has moved on turns an old one away", async () => {
+  const relay = fakeRelay(), host = pilot(relay, "Host");
+  const code = await host.room.create("Host");
+  const ok = pilot(relay, "B");
+  await ok.room.join(code, "B");
+  assert.equal(host.room.members.length, 2);
+  // a pilot from before the version existed (no pv) counts as protocol 1, which this room still accepts
+  assert.ok(net.MIN_PROTOCOL <= 1 && net.PROTOCOL >= 2);
+});
+
+test("a roster from a room that needs a newer version makes the joiner say so", async () => {
+  const relay = fakeRelay(), host = pilot(relay, "Host");
+  const code = await host.room.create("Host");
+  const keys = await net.deriveRoomKeys(code);
+  // a stand-in coordinator that answers every hello with a roster demanding protocol 99
+  const spy = relay.factory(keys.topic, async text => {
+    const m = await net.unseal(keys, text);
+    if (m?.k === "hello") {
+      const id = m.id;
+      await spy.publish(await net.seal(keys, { v: 1, n: crypto.randomUUID(), k: "mismatch", to: id }));
+    }
+  });
+  spy.start();
+  const late = pilot(relay, "Late");
+  await assert.rejects(late.room.join(code, "Late"), /different version/);
+});

@@ -3,6 +3,15 @@ import { RelayChannel, cleanRelayUrl, type PostFn } from "./relay";
 
 export interface RoomMember { id: string; name: string; joinedAt: number; slot: number }
 export const ROOM_CAPACITY = 4;
+/**
+ * The room protocol version. Every hello carries the sender's, and the roster answer carries the oldest one this room still
+ * accepts. A pilot who is too old is told (if they can read it) to update; a pilot whose plugin is older than the room's
+ * minimum is refused, rather than joining a room they would half understand. Bump PROTOCOL when messages change; raise MIN_PROTOCOL
+ * only when an old pilot could no longer play safely.
+ */
+export const PROTOCOL = 2;
+export const MIN_PROTOCOL = 1;
+const UPDATE_TEXT = "This room needs a different version of Starfield Graph. Everyone in a room should update to the latest version, then try again.";
 
 export interface RoomCallbacks {
   /** The list of pilots changed (this includes you). */
@@ -128,7 +137,7 @@ export class RelayRoom {
   }
 
   private sendHello(): Promise<void> {
-    return this.send({ k: "hello", id: this.id, name: this.name, at: Date.now() }).catch(e => this.failPending(e instanceof Error ? e.message : "Could not reach the relay."));
+    return this.send({ k: "hello", id: this.id, name: this.name, at: Date.now(), pv: PROTOCOL }).catch(e => this.failPending(e instanceof Error ? e.message : "Could not reach the relay."));
   }
 
   private failPending(message: string): void {
@@ -153,6 +162,7 @@ export class RelayRoom {
     switch (msg.k) {
       case "hello": return this.onHello(msg);
       case "roster": return this.onRoster(msg);
+      case "mismatch": if (msg.to === this.id) this.failPending(UPDATE_TEXT); return;
       case "full": if (msg.to === this.id) this.failPending("That room already has four pilots."); return;
       case "signal": if (msg.to === this.id && typeof msg.from === "string" && uuid.test(msg.from) && this.list.some(m => m.id === msg.from)) this.cb.signal(msg.from, msg.data); return;
       case "bye": if (typeof msg.id === "string") this.dropMember(msg.id); return;
@@ -161,6 +171,8 @@ export class RelayRoom {
 
   private onHello(msg: Record<string, unknown>): void {
     if (typeof msg.id !== "string" || !uuid.test(msg.id) || msg.id === this.id || !this.active || this.coordinator?.id !== this.id) return;
+    const pv = typeof msg.pv === "number" && Number.isInteger(msg.pv) ? msg.pv : 1; // a plugin from before the version existed is protocol 1
+    if (pv < MIN_PROTOCOL) { void this.send({ k: "mismatch", to: msg.id }); return; }
     const known = this.list.find(m => m.id === msg.id);
     if (!known) {
       if (this.list.length >= ROOM_CAPACITY) { void this.send({ k: "full", to: msg.id }); return; }
@@ -169,13 +181,14 @@ export class RelayRoom {
       this.list = [...this.list, { id: msg.id, name: cleanName(msg.name), joinedAt: Date.now(), slot }];
       this.cb.roster(this.list, this.id);
     }
-    void this.send({ k: "roster", members: this.list }); // a repeated hello just gets the roster again
+    void this.send({ k: "roster", members: this.list, pv: PROTOCOL, min: MIN_PROTOCOL }); // a repeated hello just gets the roster again
   }
 
   private onRoster(msg: Record<string, unknown>): void {
     if (!validMembers(msg.members)) return;
     const members = msg.members;
     if (!members.some(m => m.id === this.id)) return;
+    if (typeof msg.min === "number" && msg.min > PROTOCOL) { this.failPending(UPDATE_TEXT); return; } // the room has moved on from this version
     const changed = JSON.stringify(members) !== JSON.stringify(this.list);
     this.list = members;
     if (this.pending) { const p = this.pending; this.pending = null; p.timers.forEach(t => window.clearTimeout(t)); p.resolve(); }
