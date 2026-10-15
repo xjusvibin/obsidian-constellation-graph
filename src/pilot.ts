@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { SimNode } from "./types";
 import { PilotAudio } from "./sfx";
-import { buildShip, shipIndex, SHIP_SCALE, type Ship, type ShipKind } from "./ship";
+import { buildShip, colorIndex, paintShip, SHIP_COLORS, shipIndex, SHIP_SCALE, type Ship, type ShipKind } from "./ship";
 import { buildCockpit, type Cockpit } from "./cockpit";
 import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
@@ -59,6 +59,7 @@ export interface PilotOptions {
   invertY: boolean;
   view: "chase" | "cockpit";
   ship: ShipKind;
+  color: string;
   sound: boolean;
   volume: number;
   wireframe: boolean;
@@ -480,6 +481,7 @@ export class PilotController {
     this.refreshKeyLabels();
     this.container.classList.toggle("cg-cursor", on && this.opts.mouse === "cursor");
     this.ship.outline.opacity = this.opts.wireframe ? 0.9 : 0;
+    paintShip(this.ship, SHIP_COLORS[colorIndex(this.opts.color)].hex);
     for (const s of this.shells) s.visible = on && this.opts.wireframe;
     if (!(on && this.opts.wireframe)) { this.aimReticle.visible = false; this.lockReticle.visible = false; this.leadReticle.visible = false; }
   }
@@ -1252,7 +1254,7 @@ export class PilotController {
   private makePose(active: boolean): Pose {
     return {
       p: [this.pos.x, this.pos.y, this.pos.z], q: [this.quat.x, this.quat.y, this.quat.z, this.quat.w], v: [this.vel.x, this.vel.y, this.vel.z],
-      hp: Math.max(0, Math.min(100, Math.round(this.health))), sd: Math.max(0, Math.min(100, Math.round(this.shield))), en: clamp(this.energy, 0, 1), bo: this.boosting, ac: active && this.health > 0 && !this.watching, pr: this.clock < this.protectedUntil, sh: shipIndex(this.opts.ship),
+      hp: Math.max(0, Math.min(100, Math.round(this.health))), sd: Math.max(0, Math.min(100, Math.round(this.shield))), cl: colorIndex(this.opts.color), en: clamp(this.energy, 0, 1), bo: this.boosting, ac: active && this.health > 0 && !this.watching, pr: this.clock < this.protectedUntil, sh: shipIndex(this.opts.ship),
     };
   }
 

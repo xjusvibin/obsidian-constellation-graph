@@ -187,6 +187,9 @@ test("everything a remote pilot can send is checked", () => {
   assert.ok(net.validShot({ id: "s2", o: [0, 0, 0], d: [0, 0, 1], w: 1 }));
   assert.equal(net.validShot({ id: "s3", o: [0, 0, 0], d: [0, 0, 1], w: 7 }), false);
   assert.ok(net.validPose({ ...pose, sh: 2 }));
+  assert.ok(net.validPose({ ...pose, cl: 8 }));
+  assert.equal(net.validPose({ ...pose, cl: 9 }), false);
+  assert.equal(net.validPose({ ...pose, cl: 1.5 }), false);
   assert.equal(net.validPose({ ...pose, sh: 9 }), false);
   assert.ok(net.validHit({ shooter: "me", target: "you", shotId: "s", at: [0, 0, 0] }, "me"));
   assert.equal(net.validHit({ shooter: "someone-else", target: "you", shotId: "s", at: [0, 0, 0] }, "me"), false); // you cannot claim a hit on behalf of another shooter

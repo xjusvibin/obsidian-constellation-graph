@@ -179,6 +179,11 @@ export class ConstellationApp {
     this.panel = new MultiplayerPanel(this.root, {
       name: () => this.settings.multiplayerName,
       saveName: name => { const n = name.trim().slice(0, 24) || "Pilot"; if (n !== this.settings.multiplayerName) { this.settings = { ...this.settings, multiplayerName: n }; this.host.updateSettings?.({ multiplayerName: n }); } },
+      color: () => this.settings.pilotColor,
+      saveColor: key => {
+        if (key === this.settings.pilotColor) return;
+        this.settings = { ...this.settings, pilotColor: key }; this.host.updateSettings?.({ pilotColor: key }); this.renderer.applySettings(this.settings);
+      },
       ship: () => this.settings.pilotShip,
       saveShip: kind => {
         const ship = kind === "dart" || kind === "bulwark" ? kind : "striker";

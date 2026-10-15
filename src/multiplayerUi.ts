@@ -2,6 +2,7 @@ import type { RoomMember } from "./room";
 import type { LinkState } from "./multiplayer";
 import { formatRoomCode, inviteLink, parseRoomCode } from "./netcrypto";
 import type { Listing } from "./lobby";
+import { SHIP_COLORS } from "./ship";
 import { SLOT_COLORS } from "./remote";
 
 export interface PanelHost {
@@ -9,6 +10,8 @@ export interface PanelHost {
   saveName(name: string): void;
   ship(): string;
   saveShip(kind: string): void;
+  color(): string;
+  saveColor(key: string): void;
   create(name: string): Promise<void>;
   join(code: string, name: string): Promise<void>;
   leave(): void;
@@ -58,6 +61,7 @@ export class MultiplayerPanel {
   private busy = false;
   private code = "";
   private shipSelect: HTMLSelectElement;
+  private colorSelect: HTMLSelectElement;
 
   constructor(parent: HTMLElement, private host: PanelHost, private onClose: () => void) {
     this.el = parent.createDiv({ cls: "cg-multiplayer", attr: { role: "dialog", "aria-label": "Fly together" } });
@@ -81,6 +85,12 @@ export class MultiplayerPanel {
     shipLabel.appendChild(this.shipSelect);
     this.shipSelect.addEventListener("change", () => this.host.saveShip(this.shipSelect.value));
     this.shipSelect.addEventListener("keydown", e => e.stopPropagation());
+    const colorLabel = this.el.createEl("label", { cls: "cg-multiplayer-name", text: "Ship colour" });
+    this.colorSelect = createEl("select", { attr: { "aria-label": "Ship colour" } });
+    for (const c of SHIP_COLORS) this.colorSelect.appendChild(createEl("option", { text: c.name, attr: { value: c.key } }));
+    colorLabel.appendChild(this.colorSelect);
+    this.colorSelect.addEventListener("change", () => this.host.saveColor(this.colorSelect.value));
+    this.colorSelect.addEventListener("keydown", e => e.stopPropagation());
 
     this.startRow = this.el.createDiv({ cls: "cg-multiplayer-actions" });
     this.makeBtn = createEl("button", { cls: "cg-btn", text: "Make a room", attr: { type: "button" } });
@@ -191,7 +201,7 @@ export class MultiplayerPanel {
   setOpen(open: boolean): void {
     this.el.hidden = !open;
     if (!open) this.endBrowse();
-    if (open) { this.nameInput.value = this.host.name(); this.shipSelect.value = this.host.ship(); (this.code ? this.el : this.nameInput).focus?.({ preventScroll: true }); }
+    if (open) { this.nameInput.value = this.host.name(); this.shipSelect.value = this.host.ship(); this.colorSelect.value = this.host.color(); (this.code ? this.el : this.nameInput).focus?.({ preventScroll: true }); }
   }
   get open(): boolean { return !this.el.hidden; }
 

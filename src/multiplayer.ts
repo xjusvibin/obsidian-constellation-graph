@@ -37,7 +37,7 @@ export interface AnonymousNode { id: string; group: number; degree: number }
 export interface AnonymousTopology { revision: number; nodes: AnonymousNode[]; groups: AnonymousGroup[]; links: [string, string][] }
 
 /** Where a pilot's ship is and how it is doing. Sent about twenty times a second. */
-export interface Pose { p: [number, number, number]; q: [number, number, number, number]; v: [number, number, number]; hp: number; en: number; bo: boolean; ac: boolean; pr: boolean; sh?: number; sd?: number }
+export interface Pose { p: [number, number, number]; q: [number, number, number, number]; v: [number, number, number]; hp: number; en: number; bo: boolean; ac: boolean; pr: boolean; sh?: number; sd?: number; cl?: number }
 /** A blaster bolt: where it started and which way it flies. */
 export interface ShotMsg { id: string; o: [number, number, number]; d: [number, number, number]; w?: 0 | 1; s?: number }
 /** "You hit me." Sent by the pilot who was hit, so the shooter can show the impact. */
@@ -131,6 +131,7 @@ export function validPose(value: unknown): value is Pose {
     && typeof p.hp === "number" && Number.isFinite(p.hp) && p.hp >= 0 && p.hp <= 100 && typeof p.en === "number" && Number.isFinite(p.en) && p.en >= 0 && p.en <= 1
     && typeof p.bo === "boolean" && typeof p.ac === "boolean" && typeof p.pr === "boolean"
     && (p.sh === undefined || (Number.isInteger(p.sh) && p.sh >= 0 && p.sh <= 2))
+    && (p.cl === undefined || (Number.isInteger(p.cl) && p.cl >= 0 && p.cl <= 8))
     && (p.sd === undefined || (typeof p.sd === "number" && Number.isFinite(p.sd) && p.sd >= 0 && p.sd <= 100));
 }
 export function validShot(value: unknown): value is ShotMsg {

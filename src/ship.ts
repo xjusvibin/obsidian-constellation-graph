@@ -6,6 +6,22 @@ export const SHIP_NAMES: Record<ShipKind, string> = { striker: "Striker", dart: 
 export function shipIndex(kind: ShipKind): number { return SHIP_KINDS.indexOf(kind); }
 export function shipFromIndex(i: number): ShipKind { return SHIP_KINDS[i] ?? "striker"; }
 
+/** Ship colours a pilot can choose (index 0 means "automatic": cyan for you, your place's colour for everyone else). */
+export const SHIP_COLORS: { key: string; name: string; hex: string }[] = [
+  { key: "auto", name: "Automatic", hex: "#7fe8ff" },
+  { key: "orange", name: "Orange", hex: "#ffb347" }, { key: "violet", name: "Violet", hex: "#c792ff" }, { key: "green", name: "Green", hex: "#7dff9a" },
+  { key: "rose", name: "Rose", hex: "#ff7a9a" }, { key: "gold", name: "Gold", hex: "#ffe14a" }, { key: "white", name: "White", hex: "#f2f6ff" }, { key: "red", name: "Red", hex: "#ff5a4a" },
+  { key: "cyan", name: "Cyan", hex: "#7fe8ff" },
+];
+export function colorIndex(key: string): number { const i = SHIP_COLORS.findIndex(c => c.key === key); return i < 0 ? 0 : i; }
+
+/** Tint a ship's outline and engine flames. */
+export function paintShip(ship: Ship, hex: string): void {
+  ship.outline.color.set(hex);
+  const m = ship.flames[0]?.material as THREE.MeshBasicMaterial | undefined;
+  if (m) m.color.set(hex).lerp(new THREE.Color(0xffffff), 0.35);
+}
+
 export interface Ship {
   kind: ShipKind;
   /** The ship, nose toward -Z like the camera. Add it to the scene; the pilot positions it every frame. */

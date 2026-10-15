@@ -63,7 +63,7 @@ function baseRadius(deg: number): number {
 }
 
 function pilotOptions(s: ConstellationSettings, multiplayer = false) {
-  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, sound: s.pilotSound, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
+  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, color: s.pilotColor, sound: s.pilotSound, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
 }
 
 export function webglAvailable(): boolean {

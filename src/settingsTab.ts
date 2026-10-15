@@ -97,6 +97,8 @@ const SECTIONS: Section[] = [
         desc: "Off by default. When on, once a day the plugin asks GitHub whether a newer release exists and shows a notice with a link. It uses the network for that one request and never downloads or installs anything. You can also run the command Check for a new version at any time." },
       { key: "pilotShip", name: "Ship", control: { kind: "dropdown", options: { striker: "Striker (four wings)", dart: "Dart (delta wing)", bulwark: "Bulwark (heavy gunship)" } },
         desc: "How your ship looks, to you and to other pilots. All three fly and fight the same." },
+      { key: "pilotColor", name: "Ship colour", control: { kind: "dropdown", options: { auto: "Automatic", orange: "Orange", violet: "Violet", green: "Green", rose: "Rose", gold: "Gold", white: "White", red: "Red", cyan: "Cyan" } },
+        desc: "The glow of your ship's outline and engines, for you and for other pilots. Automatic is cyan for you and your place's colour for everyone else." },
       { key: "pilotWireframe", name: "Wireframe effects", control: { kind: "toggle" },
         desc: "Glowing plane outline, target brackets, impact bursts and faint shells around each group." },
       { key: "pilotSound", name: "Sound effects", control: { kind: "toggle" },

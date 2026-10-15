@@ -31,6 +31,7 @@ export interface ConstellationSettings {
   pilotInvertY: boolean;
   pilotView: "chase" | "cockpit";
   pilotShip: "striker" | "dart" | "bulwark";
+  pilotColor: string;
   pilotSound: boolean;
   pilotVolume: number;
   pilotWireframe: boolean;
@@ -74,6 +75,7 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   pilotInvertY: false,
   pilotView: "chase",
   pilotShip: "striker",
+  pilotColor: "auto",
   pilotSound: true,
   pilotVolume: 0.5,
   pilotWireframe: true,
@@ -126,6 +128,7 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     pilotSensitivity: clamp(r.pilotSensitivity, 0.2, 3, d.pilotSensitivity),
     pilotInvertY: bool(r.pilotInvertY, d.pilotInvertY),
     pilotView: pick(r.pilotView, ["chase", "cockpit"] as const, d.pilotView),
+    pilotColor: pick(r.pilotColor, ["auto", "orange", "violet", "green", "rose", "gold", "white", "red", "cyan"] as const, d.pilotColor),
     pilotShip: pick(r.pilotShip, ["striker", "dart", "bulwark"] as const, d.pilotShip),
     pilotSound: bool(r.pilotSound, d.pilotSound),
     pilotVolume: clamp(r.pilotVolume, 0, 1, d.pilotVolume),

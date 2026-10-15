@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { AnonymousTopology, HitMsg, Pose, ShotMsg } from "./multiplayer";
-import { buildShip, shipFromIndex, shipIndex, SHIP_SCALE, type Ship } from "./ship";
+import { buildShip, paintShip, shipFromIndex, shipIndex, SHIP_COLORS, SHIP_SCALE, type Ship } from "./ship";
 import { BOLT_REACH, SHIELD_MAX, weaponStats } from "./weapons";
 
 /**
@@ -23,7 +23,7 @@ const EDGE_MARGIN = 38;      // how far in from the edge of the view an off-scre
 
 interface RemoteMap { points: THREE.Points; lines: THREE.LineSegments; ends: Int32Array; pos: Float32Array; ready: boolean }
 interface Plate { shield: HTMLDivElement; lastSd: number; pip: HTMLDivElement; root: HTMLDivElement; name: HTMLDivElement; fill: HTMLDivElement; dist: HTMLDivElement; arrow: HTMLDivElement; lastDist: string; lastHp: number; edge: boolean }
-interface RemoteShip { ship: Ship; plate: Plate; name: string; slot: number; color: string; pose: Pose | null; at: number; target: THREE.Vector3; shown: boolean; dead: boolean; scale: number }
+interface RemoteShip { ship: Ship; plate: Plate; name: string; slot: number; color: string; pose: Pose | null; paint: string; at: number; target: THREE.Vector3; shown: boolean; dead: boolean; scale: number }
 interface RemoteBolt { owner: string; id: string; kind: 0 | 1; speed: number; o: THREE.Vector3; d: THREE.Vector3; travelled: number; head: THREE.Vector3; prev: THREE.Vector3 }
 interface Burst { line: THREE.LineSegments; age: number; size: number; live: boolean }
 
@@ -169,7 +169,7 @@ export class RemoteWorld {
     const color = SLOT_COLORS[Math.max(0, Math.min(3, slot))];
     const plate = this.makePlate(color);
     plate.name.textContent = name;
-    s = { ship: this.newModel(0, color), plate, name, slot, color, pose: null, at: 0, target: new THREE.Vector3(), shown: false, dead: false, scale: SHIP_SCALE };
+    s = { ship: this.newModel(0, color), plate, name, slot, color, pose: null, paint: "", at: 0, target: new THREE.Vector3(), shown: false, dead: false, scale: SHIP_SCALE };
     this.ships.set(id, s);
     return s;
   }
@@ -178,9 +178,11 @@ export class RemoteWorld {
     const s = this.ships.get(id); if (!s) return;
     const wasDead = s.dead, want = pose.sh ?? 0;
     if (shipIndex(s.ship.kind) !== want) { // they picked a different ship
-      const old = s.ship; s.ship = this.newModel(want, s.color);
+      const old = s.ship; s.ship = this.newModel(want, s.color); s.paint = "";
       s.ship.group.position.copy(old.group.position); s.ship.group.quaternion.copy(old.group.quaternion); this.dropModel(old);
     }
+    const hex = pose.cl ? SHIP_COLORS[pose.cl].hex : s.color; // a chosen colour, or the colour of their place in the room
+    if (hex !== s.paint) { s.paint = hex; paintShip(s.ship, hex); }
     s.pose = pose; s.at = performance.now(); s.dead = pose.hp <= 0;
     if (s.dead && !wasDead && s.shown) this.burst(pose.p[0], pose.p[1], pose.p[2], 14, s.color);
     if (!s.shown && pose.ac && !s.dead) { s.ship.group.position.set(...pose.p); s.ship.group.quaternion.set(...pose.q).normalize(); }
