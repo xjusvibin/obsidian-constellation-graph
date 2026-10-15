@@ -1,3 +1,9 @@
+**0.9.7: an accessibility pass.**
+
+- **Arcade screen for screen readers and keyboards:** it was inside the flight display, which is hidden from assistive technology. It is now a proper dialog: focus moves into it, Tab stays inside, Escape closes it.
+- **Flight messages read out:** first-flight tips are now announced, along with kills, wave changes and missile-lock warnings.
+- **High contrast:** the controller chip, drone and tip chips, missile-lock warning, round bar, winner banner and arcade screen now follow high-contrast mode, and blinking stops there and under reduced motion.
+
 **0.9.6: missile lock that works in a room.** Tested between two real windows.
 
 - **Fixed:** a missile fired with a lock used to leave toward whatever note was under the crosshair and could miss completely. It now leaves toward its target and homes.
