@@ -1,7 +1,7 @@
 {
   "id": "constellation-graph",
   "name": "Starfield Graph",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minAppVersion": "1.7.2",
   "description": "Your vault as a living night sky: a fluid 3D map of your notes that you can fly a starfighter through, alone or with friends. Keyboard and screen-reader support.",
   "author": "JusVibin",
