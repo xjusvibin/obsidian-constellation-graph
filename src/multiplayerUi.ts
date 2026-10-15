@@ -27,7 +27,7 @@ export interface PanelState {
   link: ReadonlyMap<string, LinkState>;
   health: ReadonlyMap<string, { hp: number; flying: boolean }>;
   score: ReadonlyMap<string, { kills: number; deaths: number }>;
-  ping: ReadonlyMap<string, number>;
+  ping: ReadonlyMap<string, { ms: number; loss: number }>;
   status: string;
   error: boolean;
 }
@@ -212,10 +212,10 @@ export class MultiplayerPanel {
       const h = s.health.get(m.id);
       const bar = li.createEl("progress", { cls: "cg-player-health", attr: { max: "100", value: String(h?.hp ?? 100), "aria-label": `${m.name} health` } });
       void bar;
-      const sc = s.score.get(m.id), rtt = s.ping.get(m.id);
+      const sc = s.score.get(m.id), pg = s.ping.get(m.id), rtt = pg?.ms, lossPct = Math.round((pg?.loss ?? 0) * 100);
       li.createSpan({ cls: "cg-player-score", text: `${sc?.kills ?? 0} / ${sc?.deaths ?? 0}`, attr: { title: "Kills / deaths", "aria-label": `${sc?.kills ?? 0} kills, ${sc?.deaths ?? 0} deaths` } });
-      const quality = rtt === undefined ? "" : rtt < 80 ? "good" : rtt < 160 ? "fair" : "poor";
-      li.createSpan({ cls: `cg-player-ping cg-ping-${quality}`, text: m.id === s.selfId || rtt === undefined ? "" : `${rtt} ms`, attr: { title: "Round-trip time to this pilot. Under 80 ms feels instant; over 160 ms makes shots feel late." } });
+      const loss = pg?.loss ?? 0, quality = rtt === undefined ? "" : rtt >= 160 || loss >= 0.15 ? "poor" : rtt >= 80 || loss >= 0.05 ? "fair" : "good";
+      li.createSpan({ cls: `cg-player-ping cg-ping-${quality}`, text: m.id === s.selfId || rtt === undefined ? "" : `${rtt} ms${lossPct >= 10 ? ` · ${lossPct}% lost` : ""}`, attr: { title: "Round-trip time to this pilot, and how many recent pings never came back. Under 80 ms feels instant; over 160 ms, or lost pings, make shots feel late." } });
       const link = m.id === s.selfId ? "here" : s.link.get(m.id) ?? "connecting";
       li.createSpan({ cls: "cg-player-state", text: link === "connected" ? (h && !h.flying ? "docked" : "flying") : link === "here" ? (h?.flying === false ? "docked" : "here") : link === "lost" ? "lost" : "connecting…" });
       if (host && m.id !== s.selfId) {

@@ -12,6 +12,7 @@
  * Never: note titles, paths, tags or contents.
  */
 
+import { LossMeter } from "./netstats";
 import { LobbyBrowser, LobbyPublisher, type Listing } from "./lobby";
 import { validBurst, validGrab, validMissile, type BurstMsg, type MissileMsg } from "./powerups";
 import type { GraphData, RawNode, SimNode } from "./types";
@@ -161,7 +162,7 @@ export interface SessionCallbacks {
   /** A pilot was destroyed (by another pilot's bolt, or null if unknown). Only the pilot who was hit reports it. */
   kill(victim: string, killer: string | null): void;
   /** The round-trip time to a pilot, in milliseconds (measured every couple of seconds). */
-  ping(id: string, ms: number): void;
+  ping(id: string, ms: number, loss: number): void;
   /** Another pilot fired a missile, broke one of their folded groups into meteors, or picked up a pickup. */
   missile(from: string, missile: MissileMsg): void;
   burst(from: string, burst: BurstMsg): void;
@@ -172,7 +173,7 @@ export interface SessionCallbacks {
 interface PositionAssembly { revision: number; sequence: number; totalBytes: number; chunks: Array<Uint8Array | undefined>; received: number; createdAt: number }
 interface Peer {
   pc: RTCPeerConnection; control?: RTCDataChannel; live?: RTCDataChannel; topology?: AnonymousTopology;
-  positionSequence: number; lastPositionSequence: number; lastPoseSequence: number;
+  meter: LossMeter; positionSequence: number; lastPositionSequence: number; lastPoseSequence: number;
   topologySend: { revision: number; json: string; next: number; total: number } | null;
   topologyReceive: { revision: number; total: number; parts: string[]; bytes: number; received: number } | null;
   positionReceive: Map<number, PositionAssembly>; graceTimer?: number; connected: boolean;
@@ -277,7 +278,7 @@ export class MultiplayerSession {
 
   private newPeer(id: string): Peer {
     const pc = new RTCPeerConnection(this.rtcConfig());
-    const peer: Peer = { pc, positionSequence: 0, lastPositionSequence: 0, lastPoseSequence: 0, topologySend: null, topologyReceive: null, positionReceive: new Map(), connected: false };
+    const peer: Peer = { pc, meter: new LossMeter(), positionSequence: 0, lastPositionSequence: 0, lastPoseSequence: 0, topologySend: null, topologyReceive: null, positionReceive: new Map(), connected: false };
     this.peers.set(id, peer);
     this.cb.link(id, "connecting");
     pc.ondatachannel = e => this.bindChannel(id, e.channel);
@@ -403,7 +404,8 @@ export class MultiplayerSession {
     if (m.t === "ping" && Number.isSafeInteger(m.n) && typeof m.at === "number" && Number.isFinite(m.at)) { this.sendTo(id, { t: "pong", n: m.n, at: m.at }); return; }
     if (m.t === "pong" && typeof m.at === "number" && Number.isFinite(m.at)) {
       const rtt = performance.now() - m.at;
-      if (rtt >= 0 && rtt < 20_000) this.cb.ping(id, Math.round(rtt));
+      if (Number.isSafeInteger(m.n)) peer.meter.pong(m.n as number);
+      if (rtt >= 0 && rtt < 20_000) this.cb.ping(id, Math.round(rtt), peer.meter.loss);
       return;
     }
     if (m.t === "kill") { const by = m.by; if (by === null || (typeof by === "string" && by.length > 0 && by.length <= 64 && by !== id)) this.cb.kill(id, by); return; }
@@ -528,6 +530,7 @@ export class MultiplayerSession {
   private pingAll(): void {
     if (this.closed || !this.peers.size) return;
     this.pingSeq++;
+    for (const p of this.peers.values()) if (p.control?.readyState === "open") p.meter.ping(this.pingSeq);
     this.sendControl({ t: "ping", n: this.pingSeq, at: performance.now() });
   }
 

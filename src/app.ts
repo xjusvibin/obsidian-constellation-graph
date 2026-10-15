@@ -60,7 +60,7 @@ export class ConstellationApp {
   private health = new Map<string, { hp: number; flying: boolean }>();
   private mpStatus = ""; private mpError = false;
   private score = new Map<string, { kills: number; deaths: number }>();
-  private ping = new Map<string, number>();
+  private ping = new Map<string, { ms: number; loss: number }>();
   private feed!: HTMLElement;              // kill announcements, top of the view
   private board!: HTMLElement;             // the scoreboard (hold Tab while flying)
   private mpActive = false;               // true while you are in a room
@@ -170,7 +170,7 @@ export class ConstellationApp {
       shot: (id, shot) => this.renderer.addRemoteShot?.(id, shot),
       hit: (_id, hit) => this.renderer.showRemoteHit?.(hit),
       kill: (victim, killer) => this.onKill(victim, killer),
-      ping: (id, ms) => { this.ping.set(id, ms); this.refreshPanel(); },
+      ping: (id, ms, loss) => { this.ping.set(id, { ms, loss }); this.refreshPanel(); },
       missile: (from, m) => this.renderer.addRemoteMissile?.(m.id, m, from),
       burst: (_id, b) => this.renderer.addRemoteBurst?.(b),
       grab: (_id, pickup) => this.renderer.remoteGrab?.(pickup),
