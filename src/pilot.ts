@@ -7,6 +7,7 @@ import { SpeedFx } from "./speedfx";
 import type { Pose, ShotMsg } from "./multiplayer";
 import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
+import { pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
@@ -236,6 +237,8 @@ export class PilotController {
   private aimC = -1;                         // the collapsed group under the crosshair
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
+  private pad: PadInput = readPad(null);        // the game controller, if one is plugged in
+  private padMissile = false; private padLock = false; // so a held button counts as one press
   private died = false;
   private missiles = 0;        // missiles you are carrying (pickups give them)
   private missileCooldown = 0;
@@ -789,12 +792,20 @@ export class PilotController {
     if (this.opts.multiplayer) this.stepSpectate(dt);
     const live = this.health > 0 && !this.watching;
 
-    const thrust = !live ? 0 : (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
-    const strafe = !live ? 0 : (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
-    const lift = !live ? 0 : (k.has("Space") ? 1 : 0) - (k.has("KeyC") ? 1 : 0);
-    const rollIn = !live ? 0 : (k.has("KeyQ") ? 1 : 0) - (k.has("KeyE") ? 1 : 0);
-    const wantBoost = live && (k.has("ShiftLeft") || k.has("ShiftRight"));
-    const brake = k.has("KeyX");
+    const pd = this.pad = readPad(pickPad(typeof navigator !== "undefined" ? navigator.getGamepads?.() : null));
+    const mix = (key: number, pad: number) => clamp(key + pad, -1, 1);
+    const thrust = !live ? 0 : mix((k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0), pd.thrust);
+    const strafe = !live ? 0 : mix((k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0), pd.strafe);
+    const lift = !live ? 0 : mix((k.has("Space") ? 1 : 0) - (k.has("KeyC") ? 1 : 0), pd.lift);
+    const rollIn = !live ? 0 : mix((k.has("KeyQ") ? 1 : 0) - (k.has("KeyE") ? 1 : 0), pd.roll);
+    const wantBoost = live && (k.has("ShiftLeft") || k.has("ShiftRight") || pd.boost);
+    const brake = k.has("KeyX") || pd.brake;
+    if (live) { // the right stick looks around like a mouse; the bumpers and X are single presses
+      this.mouseDX += pd.lookX * 1100 * dt; this.mouseDY += pd.lookY * 1100 * dt;
+      if (pd.missile && !this.padMissile) this.fireMissile();
+      if (pd.lock && !this.padLock) this.toggleLock();
+    }
+    this.padMissile = pd.missile; this.padLock = pd.lock;
 
     if (this.warp) { this.stepWarp(); if (thrust || strafe || lift) this.warp = null; } // taking the controls cancels a warp
     const speed01 = clamp(this.vel.length() / (this.cruise * BOOST_TOP), 0, 1);
@@ -837,7 +848,7 @@ export class PilotController {
     if (this.overheated && this.heat <= HEAT_RESET) this.overheated = false;
     if (this.health > 0 && this.clock - this.lastHitAt > SHIELD_DELAY * 1000) this.shield = Math.min(SHIELD_MAX, this.shield + SHIELD_REGEN * dt);
     if (!this.opts.multiplayer && this.ammo < AMMO_MAX) { this.ammoAcc += dt; if (this.ammoAcc > 0.6) { this.ammoAcc = 0; this.ammo++; } } // on your own the rounds trickle back; in a room only a new life refills them
-    if ((this.firing || k.has("KeyF")) && this.cooldown <= 0 && (this.locked || k.has("KeyF") || this.opts.mouse === "cursor")) this.fire();
+    if ((this.firing || k.has("KeyF") || pd.fire) && this.cooldown <= 0 && (this.locked || k.has("KeyF") || pd.fire || this.opts.mouse === "cursor")) this.fire();
 
     if (this.frame % 2 === 0) this.updateAim();
     this.updateBolts(dt);
@@ -1207,7 +1218,7 @@ export class PilotController {
 
   /** After half a minute with no keys pressed in a room you start watching the others; any flight key brings you back. */
   private stepSpectate(dt: number): void {
-    const flying = [...this.keys].some(c => c !== "KeyN") || this.firing;
+    const flying = [...this.keys].some(c => c !== "KeyN") || this.firing || this.pad.active;
     if (this.watching) {
       if (flying || !this.host.watchable().includes(this.watching)) this.setWatching(null);
       return;
