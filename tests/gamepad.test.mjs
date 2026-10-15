@@ -38,3 +38,11 @@ test("the readout name drops the driver notes", () => {
   assert.equal(m.padName({ id: "Wireless Controller (Vendor: 054c Product: 09cc)", axes: [], buttons: [] }), "Wireless Controller");
   assert.equal(m.padName(null), "Controller");
 });
+
+test("the dead zone is adjustable, and aim assist slows turning only near a target", () => {
+  assert.equal(m.readPad(pad([0.3, 0, 0, 0]), 0.35).strafe, 0);
+  assert.ok(m.readPad(pad([0.3, 0, 0, 0]), 0.1).strafe > 0);
+  assert.equal(m.assistFactor(null), 1);
+  assert.equal(m.assistFactor(0.5), 1);
+  assert.equal(m.assistFactor(0.02), m.ASSIST_SLOW);
+});

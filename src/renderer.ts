@@ -64,7 +64,7 @@ function baseRadius(deg: number): number {
 }
 
 function pilotOptions(s: ConstellationSettings, multiplayer = false) {
-  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, color: s.pilotColor, sound: s.pilotSound, drones: s.pilotDrones, tips: s.pilotTips, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
+  return { multiplayer, sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, ship: s.pilotShip, color: s.pilotColor, sound: s.pilotSound, drones: s.pilotDrones, tips: s.pilotTips, padSensitivity: s.padSensitivity, padDeadzone: s.padDeadzone, aimAssist: s.aimAssist, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
 }
 
 export function webglAvailable(): boolean {

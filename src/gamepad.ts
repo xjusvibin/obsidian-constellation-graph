@@ -21,11 +21,11 @@ export interface PadLike { id?: string; axes: readonly number[]; buttons: readon
 const down = (p: PadLike, i: number): boolean => !!p.buttons[i]?.pressed;
 const trig = (p: PadLike, i: number): boolean => (p.buttons[i]?.value ?? 0) > 0.4 || down(p, i);
 
-export function readPad(p: PadLike | null | undefined): PadInput {
+export function readPad(p: PadLike | null | undefined, dz = PAD_DEADZONE): PadInput {
   const none: PadInput = { thrust: 0, strafe: 0, lift: 0, roll: 0, lookX: 0, lookY: 0, fire: false, boost: false, brake: false, missile: false, lock: false, weapon: false, view: false, hub: false, scores: false, active: false };
   if (!p) return none;
-  const thrust = -deadzone(p.axes[1] ?? 0), strafe = deadzone(p.axes[0] ?? 0);
-  const lookX = deadzone(p.axes[2] ?? 0), lookY = deadzone(p.axes[3] ?? 0);
+  const thrust = -deadzone(p.axes[1] ?? 0, dz), strafe = deadzone(p.axes[0] ?? 0, dz);
+  const lookX = deadzone(p.axes[2] ?? 0, dz), lookY = deadzone(p.axes[3] ?? 0, dz);
   // modelled on Rocket League: A jumps (up), B boosts, X is the handbrake (brake), Y changes the camera, the bumpers roll
   const lift = (down(p, 0) ? 1 : 0) - (down(p, 10) ? 1 : 0);   // A up, a click of the left stick down
   const roll = (down(p, 4) ? 1 : 0) - (down(p, 5) ? 1 : 0);    // left bumper rolls left (Q), right bumper rolls right (E)
@@ -42,6 +42,11 @@ export function padName(p: PadLike | null | undefined): string {
 }
 
 /** The first controller that is connected and being used, or any connected one. */
+/** Aim assist for a controller: turning slows to this fraction while the crosshair is within a few degrees of a target, so a small stick movement can settle on it. */
+export const ASSIST_SLOW = 0.45;
+export const ASSIST_CONE = 0.07; // radians (about 4 degrees)
+export function assistFactor(angleToTarget: number | null): number { return angleToTarget !== null && angleToTarget < ASSIST_CONE ? ASSIST_SLOW : 1; }
+
 export function pickPad(pads: ArrayLike<PadLike | null> | null | undefined): PadLike | null {
   if (!pads) return null;
   let first: PadLike | null = null;

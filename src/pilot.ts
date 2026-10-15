@@ -9,7 +9,7 @@ import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
 import { DroneField } from "./drones";
 import { Tutorial } from "./tutorial";
-import { padName, pickPad, readPad, type PadInput } from "./gamepad";
+import { assistFactor, padName, pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, BOLT_REACH, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
@@ -80,6 +80,10 @@ export interface PilotOptions {
   drones: boolean;
   /** Show the first-flight tips (until you finish them once). */
   tips: boolean;
+  /** Game controller: look speed, the stick's dead zone, and a little help settling on a target. */
+  padSensitivity: number;
+  padDeadzone: number;
+  aimAssist: boolean;
   /** In a room: everyone flies the same ship (fixed speed), there is no warping, and ships can be shot down. */
   multiplayer: boolean;
 }
@@ -862,7 +866,7 @@ export class PilotController {
     const live = this.health > 0 && !this.watching;
 
     const raw = pickPad(typeof navigator !== "undefined" ? navigator.getGamepads?.() : null);
-    const pd = this.pad = readPad(raw);
+    const pd = this.pad = readPad(raw, this.opts.padDeadzone);
     if (this.frame % 15 === 0 || pd.active) this.showPad(raw ? padName(raw) : "", pd.active);
     const mix = (key: number, pad: number) => clamp(key + pad, -1, 1);
     const thrust = !live ? 0 : mix((k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0), pd.thrust);
@@ -872,7 +876,12 @@ export class PilotController {
     const wantBoost = live && (k.has("ShiftLeft") || k.has("ShiftRight") || pd.boost);
     const brake = k.has("KeyX") || pd.brake;
     if (live) { // the right stick looks around like a mouse; the bumpers and X are single presses
-      this.mouseDX += pd.lookX * 1100 * dt; this.mouseDY += pd.lookY * 1100 * dt;
+      let look = 1100 * this.opts.padSensitivity;
+      if (this.opts.aimAssist && (pd.lookX || pd.lookY)) { // a little friction when the crosshair is near a target, so a small stick movement can settle on it
+        const fwd = this.tmpV3.set(0, 0, -1).applyQuaternion(this.quat);
+        look *= assistFactor(this.aim >= 0 ? 0 : this.drones.active ? this.drones.angleTo(this.pos, fwd) : null);
+      }
+      this.mouseDX += pd.lookX * look * dt; this.mouseDY += pd.lookY * look * dt;
       const press = (name: string, on: boolean, act: () => void) => { if (on && !this.padHeld.has(name)) act(); on ? this.padHeld.add(name) : this.padHeld.delete(name); };
       press("missile", pd.missile, () => this.fireMissile());
       press("lock", pd.lock, () => this.toggleLock());

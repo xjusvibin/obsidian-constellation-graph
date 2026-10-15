@@ -67,6 +67,7 @@ export class DroneField {
   private radius = 200;
   private cruise = 30;
   private tmpM = new THREE.Matrix4();
+  private tmpV = new THREE.Vector3();
   private tmpO: [number, number, number] = [0, 0, 0];
 
   // a soft red glow around every drone, so a target can be found from across the graph
@@ -145,6 +146,19 @@ export class DroneField {
       if (hit < 0 || hit > reach) return;
       if (!best || hit < best.dist) best = { index, dist: hit, point: from.clone().addScaledVector(dir, hit) };
     });
+    return best;
+  }
+
+  /** The smallest angle (radians) between a view direction and any live drone, or null when there is none. Used for the controller's aim assist. */
+  angleTo(from: THREE.Vector3, dir: THREE.Vector3): number | null {
+    let best: number | null = null;
+    for (const d of this.drones) {
+      if (!d.alive) continue;
+      const toward = this.tmpV.copy(d.pos).sub(from), len = toward.length();
+      if (len < 1e-6) continue;
+      const a = Math.acos(Math.max(-1, Math.min(1, toward.dot(dir) / len)));
+      if (best === null || a < best) best = a;
+    }
     return best;
   }
 

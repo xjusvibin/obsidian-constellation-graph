@@ -36,6 +36,9 @@ export interface ConstellationSettings {
   pilotColor: string;
   pilotDrones: boolean;
   pilotTips: boolean;
+  padSensitivity: number;
+  padDeadzone: number;
+  aimAssist: boolean;
   pilotSound: boolean;
   pilotVolume: number;
   pilotWireframe: boolean;
@@ -84,6 +87,9 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   pilotColor: "auto",
   pilotDrones: true,
   pilotTips: true,
+  padSensitivity: 1,
+  padDeadzone: 0.16,
+  aimAssist: true,
   pilotSound: true,
   pilotVolume: 0.5,
   pilotWireframe: true,
@@ -153,6 +159,9 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     pilotSound: bool(r.pilotSound, d.pilotSound),
     pilotDrones: bool(r.pilotDrones, d.pilotDrones),
     pilotTips: bool(r.pilotTips, d.pilotTips),
+    padSensitivity: clamp(r.padSensitivity, 0.3, 3, d.padSensitivity),
+    padDeadzone: clamp(r.padDeadzone, 0.05, 0.4, d.padDeadzone),
+    aimAssist: bool(r.aimAssist, d.aimAssist),
     pilotVolume: clamp(r.pilotVolume, 0, 1, d.pilotVolume),
     pilotWireframe: bool(r.pilotWireframe, d.pilotWireframe),
     pilotAgility: clamp(r.pilotAgility, 0.5, 1.5, d.pilotAgility),
