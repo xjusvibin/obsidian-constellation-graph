@@ -1,3 +1,5 @@
+**0.7.2: the controller, laid out like Rocket League.** The bumpers roll (left bumper left, right bumper right), B is the afterburner, A goes up (click the left stick to go down), X brakes, Y changes the view, and the d-pad locks a pilot (up), switches weapon (left) and returns to the hub (down). Triggers still fire and launch missiles. Fixed: the d-pad no longer rolls the wrong way.
+
 **0.7.1: a better controller layout.** Right trigger fires, left trigger launches a missile, right bumper (or a click of the left stick) is the afterburner, left bumper brakes, A and B go up and down, X switches weapon, Y locks a pilot, the d-pad rolls (up changes the view, down returns to the hub), and Back holds the scoreboard. A small readout at the bottom left of Pilot mode names your controller and lights up while you use it, so you can see the plugin has found it.
 
 **0.7.0: rounds, tours, controller support and ship colours.**
