@@ -12,7 +12,7 @@
  * Never: note titles, paths, tags or contents.
  */
 
-import { validRound, type RoundMsg } from "./round";
+import { validRound, validSync, type RoundMsg, type RoundSync } from "./round";
 import { LossMeter } from "./netstats";
 import { LobbyBrowser, LobbyPublisher, type Listing } from "./lobby";
 import { validBurst, validGrab, validMissile, type BurstMsg, type MissileMsg } from "./powerups";
@@ -171,6 +171,10 @@ export interface SessionCallbacks {
   grab(from: string, pickup: number): void;
   /** The host started a round. */
   round(round: RoundMsg): void;
+  /** The host's picture of the round and scores, to send to a pilot who has just connected (null when there is nothing to tell). */
+  syncState(): RoundSync | null;
+  /** The host told us how the round stands. */
+  sync(state: RoundSync): void;
   removed(id: string): void;
 }
 
@@ -358,6 +362,7 @@ export class MultiplayerSession {
     else { dc.close(); return; }
     dc.onopen = () => {
       if (dc.label === "constellation-control" && this.topology) this.queueTopology(id, this.topology);
+      if (dc.label === "constellation-control" && this.isHost) { const state = this.cb.syncState(); if (state) this.sendTo(id, { t: "sync", state }); } // a pilot who arrives mid-round learns how it stands
       this.updateStatus();
     };
     dc.onmessage = event => this.onPeerMessage(id, event.data, dc.label === "constellation-control" ? "control" : "live");
@@ -401,6 +406,7 @@ export class MultiplayerSession {
     }
     if (m.t === "shot" && validShot(m.shot)) { this.cb.shot(id, m.shot); return; }
     if (m.t === "hit" && validHit(m.hit, this.selfId) && m.hit.target === id) { this.cb.hit(id, m.hit); return; }
+    if (m.t === "sync" && validSync(m.state)) { if (this.hostId() === id) this.cb.sync(m.state); return; }
     if (m.t === "round" && validRound(m.round)) { if (this.hostId() === id) this.cb.round(m.round); return; } // only the host can start one
     if (m.t === "kick") { if (this.hostId() === id) this.leave("You were removed from the room by its host."); return; }
     if (m.t === "missile" && validMissile(m.missile)) { this.cb.missile(id, m.missile); return; }

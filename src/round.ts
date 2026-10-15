@@ -19,6 +19,18 @@ export function validRound(v: unknown): v is RoundMsg {
 
 export function describeRound(r: RoundMsg): string { return r.mode === "kills" ? `first to ${r.n} kills` : `${Math.round(r.secs / 60 * 10) / 10} minutes, most kills`; }
 
+/** What the host tells a pilot who joins (or reconnects) mid-round: the round, how long is left, and the scores so far. */
+export interface RoundSync { round: RoundMsg | null; left: number; scores: { id: string; k: number; d: number }[] }
+
+export function validSync(v: unknown): v is RoundSync {
+  if (!v || typeof v !== "object") return false;
+  const s = v as RoundSync;
+  if (s.round !== null && !validRound(s.round)) return false;
+  if (!Number.isFinite(s.left) || s.left < 0 || s.left > 1800) return false;
+  if (!Array.isArray(s.scores) || s.scores.length > 4) return false;
+  return s.scores.every(x => !!x && typeof x.id === "string" && /^[0-9a-f-]{36}$/i.test(x.id) && Number.isSafeInteger(x.k) && x.k >= 0 && x.k <= 999 && Number.isSafeInteger(x.d) && x.d >= 0 && x.d <= 999);
+}
+
 export interface Tally { id: string; kills: number; deaths: number }
 
 /** Who wins: the most kills, then the fewest deaths. More than one id means a draw. */

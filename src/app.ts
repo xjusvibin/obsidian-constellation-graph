@@ -1,4 +1,4 @@
-import { ROUND_PRESETS, describeRound, reachedTarget, roundWinners, type RoundMsg, type Tally } from "./round";
+import { ROUND_PRESETS, describeRound, reachedTarget, roundWinners, type RoundMsg, type RoundSync, type Tally } from "./round";
 import { ConstellationRenderer, webglAvailable } from "./renderer";
 import { MultiplayerSession, type LinkState } from "./multiplayer";
 import { MultiplayerPanel } from "./multiplayerUi";
@@ -181,6 +181,8 @@ export class ConstellationApp {
       burst: (_id, b) => this.renderer.addRemoteBurst?.(b),
       grab: (_id, pickup) => this.renderer.remoteGrab?.(pickup),
       round: r => this.beginRound(r),
+      syncState: () => this.roundSync(),
+      sync: s => this.applySync(s),
       removed: id => { this.link.delete(id); this.health.delete(id); this.ping.delete(id); this.renderer.removeRemote?.(id); this.refreshPanel(); },
     }, () => ({ data: this.data, nodes: this.renderer.nodes }), () => this.sessionOptions());
     this.panel = new MultiplayerPanel(this.root, {
@@ -383,9 +385,29 @@ export class ConstellationApp {
     if (!this.mpActive) return;
     this.score.clear(); this.banner.hidden = true;
     this.round = { r, endsAt: r.mode === "time" ? Date.now() + r.secs * 1000 : 0 };
+    this.runRound(r);
+  }
+
+  /** What a pilot who has just connected needs to know: the round, the time left, the scores. Nothing when it is free flight with no score. */
+  private roundSync(): RoundSync | null {
+    const scores = [...this.score].filter(([id]) => this.members.some(m => m.id === id)).map(([id, s]) => ({ id, k: Math.min(999, s.kills), d: Math.min(999, s.deaths) }));
+    if (!this.round && !scores.length) return null;
+    return { round: this.round?.r ?? null, left: this.round && this.round.r.mode === "time" ? Math.max(0, (this.round.endsAt - Date.now()) / 1000) : 0, scores };
+  }
+
+  /** The host told us how things stand (we joined or reconnected mid-round): take their scores and round, with the time left on our own clock. */
+  private applySync(s: RoundSync): void {
+    if (!this.mpActive) return;
+    this.score.clear(); for (const x of s.scores) this.score.set(x.id, { kills: x.k, deaths: x.d });
+    if (s.round) { this.round = { r: s.round, endsAt: s.round.mode === "time" ? Date.now() + s.left * 1000 : 0 }; this.runRound(s.round, true); }
+    this.refreshPanel();
+  }
+
+  private runRound(r: RoundMsg, joined = false): void {
     window.clearInterval(this.roundTimer); this.roundTimer = window.setInterval(() => this.checkRound(), 500);
-    this.addFeed(`Round started: ${describeRound(r)}`, false);
-    this.announce(`Round started: ${describeRound(r)}`);
+    const text = joined ? `Round in progress: ${describeRound(r)}` : `Round started: ${describeRound(r)}`;
+    this.addFeed(text, false);
+    this.announce(text);
     this.refreshPanel(); this.checkRound();
   }
 
