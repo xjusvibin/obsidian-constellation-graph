@@ -1,4 +1,5 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin, requestUrl } from "obsidian";
+import { RELEASES_API, compareVersions, parseLatest } from "./update";
 import { ConstellationSettings, DEFAULT_SETTINGS, sanitizeSettings } from "./settings";
 import { ConstellationSettingTab } from "./settingsTab";
 import { ConstellationView, VIEW_TYPE } from "./view";
@@ -18,7 +19,33 @@ export default class ConstellationPlugin extends Plugin {
     this.addCommand({ id: "open", name: "Open graph view", callback: () => void this.activate() });
     this.addSettingTab(new ConstellationSettingTab(this.app, this));
     // wait until the workspace has been restored, otherwise the saved layout would open over it
-    this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) void this.activate(); });
+    this.addCommand({ id: "check-updates", name: "Check for a new version", callback: () => void this.checkForUpdates(true) });
+    this.app.workspace.onLayoutReady(() => {
+      if (this.settings.openOnStartup) void this.activate();
+      // optional and off by default: at most once a day, and only when the reader has turned it on
+      if (this.settings.checkForUpdates && Date.now() - this.settings.updateCheckedAt > 24 * 3600 * 1000) void this.checkForUpdates(false);
+    });
+  }
+
+  /**
+   * Ask GitHub for the latest release and say so if it is newer than this one. It only ever shows a notice with a link:
+   * nothing is downloaded or installed (Obsidian's Community plugins page does that). A manual check also says when you are up to date.
+   */
+  async checkForUpdates(manual: boolean): Promise<void> {
+    try {
+      const res = await requestUrl({ url: RELEASES_API, headers: { Accept: "application/vnd.github+json" }, throw: false });
+      if (res.status !== 200) { if (manual) new Notice("Could not check for a new version right now."); return; }
+      const latest = parseLatest(res.json), current = this.manifest.version;
+      this.update({ updateCheckedAt: Date.now() });
+      if (latest && compareVersions(latest.version, current) > 0) {
+        if (!manual && this.settings.updateNotified === latest.version) return; // said once already
+        this.update({ updateNotified: latest.version });
+        new Notice(createFragment(f => {
+          f.createSpan({ text: `Starfield Graph ${latest.version} is available (you have ${current}). Update it under Settings, Community plugins, Check for updates. ` });
+          f.createEl("a", { text: "What is new", href: latest.url });
+        }), 20000);
+      } else if (manual) new Notice(`Starfield Graph ${current} is up to date.`);
+    } catch { if (manual) new Notice("Could not check for a new version right now."); }
   }
 
   onunload(): void {

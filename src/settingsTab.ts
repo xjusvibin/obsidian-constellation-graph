@@ -91,6 +91,8 @@ const SECTIONS: Section[] = [
         desc: "Lower is heavier: the ship turns more slowly and takes longer to start and stop a turn." },
       { key: "pilotView", name: "View", control: { kind: "dropdown", options: { chase: "Chase (see the plane)", cockpit: "Cockpit (no plane)" } },
         desc: "Press V in flight to switch." },
+      { key: "checkForUpdates", name: "Tell me about new versions", control: { kind: "toggle" },
+        desc: "Off by default. When on, once a day the plugin asks GitHub whether a newer release exists and shows a notice with a link. It uses the network for that one request and never downloads or installs anything. You can also run the command Check for a new version at any time." },
       { key: "pilotShip", name: "Ship", control: { kind: "dropdown", options: { striker: "Striker (four wings)", dart: "Dart (delta wing)", bulwark: "Bulwark (heavy gunship)" } },
         desc: "How your ship looks, to you and to other pilots. All three fly and fight the same." },
       { key: "pilotWireframe", name: "Wireframe effects", control: { kind: "toggle" },

@@ -10,6 +10,9 @@ export interface ConstellationSettings {
   nodeSize: number;
   linkBrightness: number;
   spacing: number;
+  checkForUpdates: boolean;
+  updateCheckedAt: number;
+  updateNotified: string;
   bloom: boolean;
   labelCount: number;
   labelSize: number;
@@ -49,6 +52,9 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   nodeSize: 1,
   linkBrightness: 1,
   spacing: 1,
+  checkForUpdates: false,
+  updateCheckedAt: 0,
+  updateNotified: "",
   bloom: true,
   labelCount: 14,
   labelSize: 13,
@@ -98,6 +104,9 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     nodeSize: clamp(r.nodeSize, 0.5, 2, d.nodeSize),
     linkBrightness: clamp(r.linkBrightness, 0.3, 2.5, d.linkBrightness),
     spacing: clamp(r.spacing, 0.5, 2.5, d.spacing),
+    checkForUpdates: bool(r.checkForUpdates, d.checkForUpdates),
+    updateCheckedAt: typeof r.updateCheckedAt === "number" && isFinite(r.updateCheckedAt) ? r.updateCheckedAt : 0,
+    updateNotified: typeof r.updateNotified === "string" && /^\d+\.\d+\.\d+$/.test(r.updateNotified) ? r.updateNotified : "",
     bloom: bool(r.bloom, d.bloom),
     labelCount: Math.round(clamp(r.labelCount, 0, 40, d.labelCount)),
     labelSize: Math.round(clamp(r.labelSize, 10, 24, d.labelSize)),
