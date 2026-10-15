@@ -38,6 +38,7 @@ export class MultiplayerPanel {
   private codeText: HTMLElement;
   private list: HTMLUListElement;
   private statusEl: HTMLDivElement;
+  private helpEl: HTMLDetailsElement;
   private makeBtn: HTMLButtonElement;
   private joinBtn: HTMLButtonElement;
   private busy = false;
@@ -88,6 +89,17 @@ export class MultiplayerPanel {
 
     this.list = this.el.createEl("ul", { cls: "cg-multiplayer-players" });
     this.statusEl = this.el.createDiv({ cls: "cg-multiplayer-status", attr: { role: "status", "aria-live": "polite" } });
+    // shown only after something goes wrong: the usual reasons, in the order worth checking
+    this.helpEl = this.el.createEl("details", { cls: "cg-multiplayer-help" });
+    this.helpEl.hidden = true;
+    this.helpEl.createEl("summary", { text: "Can't connect? Things to check" });
+    const tips = this.helpEl.createEl("ul");
+    for (const t of [
+      "The code must be exactly ten letters and numbers, and the pilot who made the room must still have it open (a room closes when its last pilot leaves).",
+      "Both of you need internet access. The relay (ntfy.sh unless you changed it) must be reachable: try opening https://ntfy.sh in a browser. Some work or school networks block it, and you can pick another relay in the plugin's settings under Multiplayer.",
+      "If you joined but the link stays on \"connecting\", one of your networks is blocking direct connections (common with VPNs and strict routers). Turn the VPN off, or add a TURN server in the Multiplayer settings.",
+      "The free relay has usage limits. If it says it is limiting requests, wait a minute and try again.",
+    ]) tips.createEl("li", { text: t });
   }
 
   private name(): string { return this.nameInput.value.trim() || "Pilot"; }
@@ -108,7 +120,7 @@ export class MultiplayerPanel {
 
   private setBusy(b: boolean): void { this.busy = b; this.makeBtn.disabled = this.joinBtn.disabled = b; }
 
-  say(text: string, error: boolean): void { this.statusEl.textContent = text; this.statusEl.classList.toggle("cg-error", error); }
+  say(text: string, error: boolean): void { this.statusEl.textContent = text; this.statusEl.classList.toggle("cg-error", error); this.helpEl.hidden = !error; if (!error) this.helpEl.open = false; }
 
   setOpen(open: boolean): void {
     this.el.hidden = !open;

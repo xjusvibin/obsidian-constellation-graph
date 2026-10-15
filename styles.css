@@ -289,3 +289,8 @@
 
 .cg-player-ping { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--cg-dim); }
 .cg-ping-good { color: #7dff9a; } .cg-ping-fair { color: #ffd54a; } .cg-ping-poor { color: #ff7a6a; }
+
+.cg-multiplayer-help { margin: 6px 0 2px; font-size: 12px; color: var(--cg-dim); }
+.cg-multiplayer-help[hidden] { display: none; }
+.cg-multiplayer-help summary { cursor: pointer; color: var(--cg-ink); }
+.cg-multiplayer-help ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
