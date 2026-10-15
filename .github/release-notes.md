@@ -1,3 +1,10 @@
+**0.8.0: reliable rooms.** The first step on the road to 1.0.
+
+- **Version check:** every room now carries a protocol version, so a pilot on a version the room no longer supports is told to update instead of joining half-working.
+- **Joining mid-round:** a pilot who joins during a round is told the round, the time left and the scores.
+- **Mending a blip:** a brief network drop is repaired in place (the connection search restarts) before a pilot is dropped.
+- **Copy diagnostics:** a button in the Fly together panel puts versions, the relay name, ping, loss and how each pilot is reached on the clipboard for a bug report. It holds no room code, names, addresses or note data.
+
 **0.7.3: the map reacts to missiles.** Every blast (a missile hit, a folded group breaking into meteors) now shoves the nearby notes away and makes them flare, then they spring back. It only changes how the notes are drawn, so the layout and what other pilots see are untouched, and it is off with your motion setting.
 
 **0.7.2: the controller, laid out like Rocket League.** The bumpers roll (left bumper left, right bumper right), B is the afterburner, A goes up (click the left stick to go down), X brakes, Y changes the view, and the d-pad locks a pilot (up), switches weapon (left) and returns to the hub (down). Triggers still fire and launch missiles. Fixed: the d-pad no longer rolls the wrong way.
