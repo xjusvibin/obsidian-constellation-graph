@@ -1,0 +1,22 @@
+{
+  "name": "constellation-signaling-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hosted Durable Object and local Node.js signaling services for Constellation Graph rooms.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev:hosted": "wrangler dev --config wrangler.jsonc",
+    "deploy:hosted": "wrangler deploy --config wrangler.jsonc",
+    "build:hosted": "wrangler deploy --dry-run --outdir .worker-dist --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.0"
+  }
+}

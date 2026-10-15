@@ -21,7 +21,8 @@ export class ConstellationView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("cg-view");
     this.ca = new ConstellationApp(this.contentEl, {
-      openNote: (id, newTab) => this.openNote(id, newTab),
+      openNote: (id, newTab) => { if (!this.ca?.inRoom) this.openNote(id, newTab); },
+      updateSettings: patch => this.plugin.update(patch),
     }, this.plugin.settings);
     this.refresh(true);
 
@@ -63,6 +64,7 @@ export class ConstellationView extends ItemView {
   }
 
   private openNote(id: string, newTab: boolean): void {
+    if (this.ca?.inRoom) return;
     const f = this.app.vault.getAbstractFileByPath(id);
     if (!(f instanceof TFile)) return;
     // reuse the note you were last reading, but never replace this graph and never touch a sidebar

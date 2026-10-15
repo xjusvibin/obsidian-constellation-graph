@@ -13,10 +13,14 @@ interface Engine {
 export class PilotAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private engineBus: GainNode | null = null;
+  private afterburnerBus: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private engine: Engine | null = null;
   private enabled = true;
   private volume = 0.5;
+  private engineMuted = false;
+  private afterburnerMuted = false;
   private lastTick = 0;
   private lastUpdate = 0;
   private watchdog = 0;
@@ -25,6 +29,16 @@ export class PilotAudio {
     this.enabled = enabled; this.volume = volume;
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(enabled ? volume : 0, this.ctx.currentTime, 0.05);
     if (!enabled) this.stopEngine(); else if (this.ctx && !this.engine) this.startEngine();
+  }
+
+  setEngineMuted(muted: boolean): void {
+    this.engineMuted = muted;
+    if (this.engineBus && this.ctx) this.engineBus.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.04);
+  }
+
+  setAfterburnerMuted(muted: boolean): void {
+    this.afterburnerMuted = muted;
+    if (this.afterburnerBus && this.ctx) this.afterburnerBus.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.04);
   }
 
   /** Call from a user gesture (entering Pilot mode). */
@@ -38,6 +52,8 @@ export class PilotAudio {
         this.master = this.ctx.createGain();
         this.master.gain.value = this.volume;
         this.master.connect(this.ctx.destination);
+        this.engineBus = this.ctx.createGain(); this.engineBus.gain.value = this.engineMuted ? 0 : 1; this.engineBus.connect(this.master);
+        this.afterburnerBus = this.ctx.createGain(); this.afterburnerBus.gain.value = this.afterburnerMuted ? 0 : 1; this.afterburnerBus.connect(this.master);
         const len = this.ctx.sampleRate, buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         this.noise = buf;
@@ -57,7 +73,7 @@ export class PilotAudio {
   destroy(): void {
     this.stopEngine();
     window.clearInterval(this.watchdog);
-    const c = this.ctx; this.ctx = null; this.master = null; this.noise = null;
+    const c = this.ctx; this.ctx = null; this.master = null; this.engineBus = null; this.afterburnerBus = null; this.noise = null;
     if (c) void c.close().catch(() => undefined);
   }
 
@@ -69,14 +85,15 @@ export class PilotAudio {
     const sub = c.createOscillator(); sub.type = "square"; sub.frequency.value = 26;
     const lowpass = c.createBiquadFilter(); lowpass.type = "lowpass"; lowpass.frequency.value = 220; lowpass.Q.value = 2;
     const gain = c.createGain(); gain.gain.value = 0;
-    saw.connect(lowpass); sub.connect(lowpass); lowpass.connect(gain); gain.connect(m);
+    const bus = this.engineBus ?? m;
+    saw.connect(lowpass); sub.connect(lowpass); lowpass.connect(gain); gain.connect(bus);
     const hiss = c.createBufferSource(); hiss.buffer = this.noise; hiss.loop = true;
     const hissFilter = c.createBiquadFilter(); hissFilter.type = "bandpass"; hissFilter.frequency.value = 600; hissFilter.Q.value = 0.8;
     const hissGain = c.createGain(); hissGain.gain.value = 0;
-    hiss.connect(hissFilter); hissFilter.connect(hissGain); hissGain.connect(m);
+    hiss.connect(hissFilter); hissFilter.connect(hissGain); hissGain.connect(bus);
     const whine = c.createOscillator(); whine.type = "sine"; whine.frequency.value = 900;
     const whineGain = c.createGain(); whineGain.gain.value = 0;
-    whine.connect(whineGain); whineGain.connect(m);
+    whine.connect(whineGain); whineGain.connect(bus);
     saw.start(); sub.start(); hiss.start(); whine.start();
     this.engine = { saw, sub, lowpass, gain, hiss, hissFilter, hissGain, whine, whineGain };
     // If the flight loop stops feeding the engine (tab hidden, view closed, window in the background) it must go quiet, never hold its last note.
@@ -133,26 +150,26 @@ export class PilotAudio {
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   }
 
-  private sweep(from: number, to: number, dur: number, type: OscillatorType, peak: number, delay = 0): void {
+  private sweep(from: number, to: number, dur: number, type: OscillatorType, peak: number, delay = 0, destination?: AudioNode | null): void {
     const c = this.ctx, m = this.master; if (!c || !m || !this.enabled) return;
     const t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
     o.type = type; o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
     this.env(g, t, peak, dur);
-    o.connect(g); g.connect(m); o.start(t); o.stop(t + dur + 0.05);
+    o.connect(g); g.connect(destination ?? m); o.start(t); o.stop(t + dur + 0.05);
   }
 
-  private burst(dur: number, from: number, to: number, peak: number, delay = 0): void {
+  private burst(dur: number, from: number, to: number, peak: number, delay = 0, destination?: AudioNode | null): void {
     const c = this.ctx, m = this.master; if (!c || !m || !this.noise || !this.enabled) return;
     const t = c.currentTime + delay, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
     s.buffer = this.noise; f.type = "bandpass"; f.Q.value = 1.2;
     f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(Math.max(40, to), t + dur);
     this.env(g, t, peak, dur);
-    s.connect(f); f.connect(g); g.connect(m); s.start(t); s.stop(t + dur + 0.05);
+    s.connect(f); f.connect(g); g.connect(destination ?? m); s.start(t); s.stop(t + dur + 0.05);
   }
 
   /** A blaster bolt: a fast downward chirp with a crack of noise at the start. `i` varies the pitch a little from gun to gun. */
   /** The afterburner lighting: a rising whoosh. */
-  afterburner(): void { this.burst(0.6, 250, 3000, 0.13); this.sweep(90, 220, 0.5, "sawtooth", 0.07); }
+  afterburner(): void { this.burst(0.6, 250, 3000, 0.13, 0, this.afterburnerBus); this.sweep(90, 220, 0.5, "sawtooth", 0.07, 0, this.afterburnerBus); }
 
   laser(i = 0): void {
     const k = 1 + (i % 4) * 0.06;

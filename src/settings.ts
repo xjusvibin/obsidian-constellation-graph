@@ -24,11 +24,16 @@ export interface ConstellationSettings {
   pilotInvertY: boolean;
   pilotView: "chase" | "cockpit";
   pilotSound: boolean;
+  pilotMuteEngine: boolean;
+  pilotMuteAfterburner: boolean;
   pilotVolume: number;
   pilotWireframe: boolean;
   pilotAgility: number;
   pilotSpeed: number;
   pilotMouse: "capture" | "cursor";
+  multiplayerName: string;
+  multiplayerConnectionMode: "hosted" | "custom";
+  multiplayerCustomServerUrl: string;
 }
 
 export const DEFAULT_SETTINGS: ConstellationSettings = {
@@ -53,11 +58,16 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   pilotInvertY: false,
   pilotView: "chase",
   pilotSound: true,
+  pilotMuteEngine: false,
+  pilotMuteAfterburner: false,
   pilotVolume: 0.5,
   pilotWireframe: true,
   pilotAgility: 1,
   pilotSpeed: 1,
   pilotMouse: "capture",
+  multiplayerName: "Pilot",
+  multiplayerConnectionMode: "hosted",
+  multiplayerCustomServerUrl: "",
 };
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number =>
@@ -70,6 +80,9 @@ const bool = (v: unknown, fallback: boolean): boolean => (typeof v === "boolean"
 export function sanitizeSettings(raw: unknown): ConstellationSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_SETTINGS;
+  const legacyServerUrl = typeof r.multiplayerSignalingUrl === "string" ? r.multiplayerSignalingUrl.slice(0, 512) : "";
+  const migratedCustomUrl = legacyServerUrl && legacyServerUrl !== "ws://localhost:8787" ? legacyServerUrl : "";
+  const connectionMode = pick(r.multiplayerConnectionMode, ["hosted", "custom"] as const, migratedCustomUrl ? "custom" : d.multiplayerConnectionMode);
   return {
     motion: pick(r.motion, ["off", "calm", "lively"] as const, d.motion),
     autoRotate: bool(r.autoRotate, d.autoRotate),
@@ -92,11 +105,18 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     pilotInvertY: bool(r.pilotInvertY, d.pilotInvertY),
     pilotView: pick(r.pilotView, ["chase", "cockpit"] as const, d.pilotView),
     pilotSound: bool(r.pilotSound, d.pilotSound),
+    pilotMuteEngine: bool(r.pilotMuteEngine, d.pilotMuteEngine),
+    pilotMuteAfterburner: bool(r.pilotMuteAfterburner, d.pilotMuteAfterburner),
     pilotVolume: clamp(r.pilotVolume, 0, 1, d.pilotVolume),
     pilotWireframe: bool(r.pilotWireframe, d.pilotWireframe),
     pilotAgility: clamp(r.pilotAgility, 0.5, 1.5, d.pilotAgility),
     pilotSpeed: clamp(r.pilotSpeed, 0.4, 3, d.pilotSpeed),
     pilotMouse: pick(r.pilotMouse, ["capture", "cursor"] as const, d.pilotMouse),
+    multiplayerName: typeof r.multiplayerName === "string" ? r.multiplayerName.trim().slice(0, 24) || d.multiplayerName : d.multiplayerName,
+    multiplayerConnectionMode: connectionMode,
+    multiplayerCustomServerUrl: typeof r.multiplayerCustomServerUrl === "string"
+      ? r.multiplayerCustomServerUrl.slice(0, 512)
+      : migratedCustomUrl,
   };
 }
 

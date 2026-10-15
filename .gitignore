@@ -1,7 +1,11 @@
 node_modules/
 main.js
+dist/
+.worker-dist/
+server/.wrangler/
 *.map
 dev/harness.html
+dev/network-harness.html
 dev/mock-data.json
 data.json
 .DS_Store

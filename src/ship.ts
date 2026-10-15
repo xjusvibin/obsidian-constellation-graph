@@ -15,6 +15,11 @@ export interface Ship {
 }
 
 const WING_SPREAD = 0.32; // how far the four wings fan out of the horizontal, in radians
+export const SHIP_SCALE = 0.34;
+export const MULTIPLAYER_SHIP_SCALE = SHIP_SCALE * 2;
+export const SHIP_MUZZLES: readonly [number, number, number][] = [
+  [-1.61, -0.51, -0.97], [-1.61, 0.51, -0.97], [1.61, -0.51, -0.97], [1.61, 0.51, -0.97],
+];
 
 /**
  * A small four-winged starfighter built from primitives, with a glowing wireframe outline over the hull.

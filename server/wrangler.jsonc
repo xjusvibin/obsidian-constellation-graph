@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "constellation-rooms",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "RoomCoordinator" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RoomCoordinator"] }
+  ],
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "vars": {
+    "MAX_ROOMS": "500",
+    "STUN_URLS": "stun:stun.l.google.com:19302"
+  }
+}

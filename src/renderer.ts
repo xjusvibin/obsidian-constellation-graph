@@ -3,10 +3,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { Simulation } from "./sim";
+import { Simulation, mapCoordinate } from "./sim";
 import { PilotController } from "./pilot";
 import type { GraphData, GraphRenderer, RendererCallbacks, SimNode } from "./types";
 import { ConstellationSettings, effectiveAutoRotate, effectiveHighContrast, effectiveMotion, prefersReducedMotion } from "./settings";
+import type { AnonymousTopology, ImpactSnapshot, NavigationTarget, Pose, ShotSnapshot } from "./multiplayer";
+import { buildShip, type Ship } from "./ship";
 
 THREE.ColorManagement.enabled = false; // we feed sRGB values straight to the screen
 
@@ -51,8 +53,8 @@ function baseRadius(deg: number): number {
   return Math.min(5.5, 0.9 + Math.sqrt(deg) * 0.5);
 }
 
-function pilotOptions(s: ConstellationSettings) {
-  return { sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, sound: s.pilotSound, volume: s.pilotVolume, wireframe: s.pilotWireframe, agility: s.pilotAgility, speed: s.pilotSpeed, mouse: s.pilotMouse };
+function pilotOptions(s: ConstellationSettings, multiplayer = false) {
+  return { sensitivity: s.pilotSensitivity, invertY: s.pilotInvertY, view: s.pilotView, sound: s.pilotSound, volume: s.pilotVolume, muteEngine: s.pilotMuteEngine, muteAfterburner: s.pilotMuteAfterburner, wireframe: s.pilotWireframe, agility: multiplayer ? 1 : s.pilotAgility, speed: multiplayer ? 1 : s.pilotSpeed, mouse: s.pilotMouse, multiplayer };
 }
 
 export function webglAvailable(): boolean {
@@ -63,6 +65,10 @@ export function webglAvailable(): boolean {
 }
 
 interface Tween { t0: number; dur: number; p0: THREE.Vector3; p1: THREE.Vector3; t0v: THREE.Vector3; t1v: THREE.Vector3 }
+interface RemoteMap { playerId: string; points: THREE.Points; links: THREE.LineSegments; ids: Map<string, number>; nodeIds: string[]; revision: number; target: Float32Array; current: Float32Array; initialized: boolean }
+interface RemoteShip { ship: Ship; target: Pose | null; name: string; indicator: HTMLDivElement; label: HTMLSpanElement; arrow: HTMLSpanElement }
+interface RemoteBolt { line: THREE.Line; ownerId: string; target: THREE.Vector3; current: THREE.Vector3; direction: THREE.Vector3 }
+interface NetworkImpact { mesh: THREE.Mesh; expires: number }
 interface Rect { x: number; y: number; w: number; h: number }
 
 export class ConstellationRenderer implements GraphRenderer {
@@ -71,6 +77,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
+  private mapGroup = new THREE.Group();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 7000);
   private controls: OrbitControls;
   private composer: EffectComposer;
@@ -78,6 +85,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private bloom: UnrealBloomPass;
   private canvas: HTMLCanvasElement;
   private labelLayer: HTMLDivElement;
+  private indicatorLayer: HTMLDivElement;
   private labels: HTMLDivElement[] = [];
   private stars: THREE.Points;
   private nodePoints: THREE.Points | null = null;
@@ -149,6 +157,19 @@ export class ConstellationRenderer implements GraphRenderer {
   private pilot: PilotController;
   private aim = -1; // the note under the Pilot crosshair
   private fwd = new THREE.Vector3();
+  private netQ = new THREE.Quaternion();
+  private remoteMaps = new Map<string, RemoteMap>();
+  private multiplayer = false;
+  private regionOrigin: [number, number, number] = [0, 0, 0];
+  private worldNodes: SimNode[] = [];
+  private localPlayerId = "";
+  private localTopology: AnonymousTopology | null = null;
+  private navigationTarget: NavigationTarget | null = null;
+  private localPose: Pose | null = null;
+  private navigationMarker: THREE.Mesh;
+  private remoteShips = new Map<string, RemoteShip>();
+  private remoteShots = new Map<string, RemoteBolt>();
+  private networkImpacts = new Map<string, NetworkImpact>();
 
   constructor(private container: HTMLElement, private cb: RendererCallbacks, settings: ConstellationSettings) {
     this.settings = settings;
@@ -164,6 +185,10 @@ export class ConstellationRenderer implements GraphRenderer {
     this.flashEl = container.createDiv({ cls: "cg-flash", attr: { "aria-hidden": "true" } });
 
     this.labelLayer = container.createDiv({ cls: "cg-labels", attr: { "aria-hidden": "true" } });
+    this.indicatorLayer = container.createDiv({ cls: "cg-player-indicators", attr: { "aria-hidden": "true" } });
+    this.scene.add(this.mapGroup);
+    this.navigationMarker = new THREE.Mesh(new THREE.RingGeometry(4, 5.5, 24), new THREE.MeshBasicMaterial({ color: 0xff5d68, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthTest: false }));
+    this.navigationMarker.visible = false; this.navigationMarker.renderOrder = 9; this.scene.add(this.navigationMarker);
 
     this.camera.position.set(260, 150, 560);
     this.controls = new OrbitControls(this.camera, this.canvas);
@@ -185,20 +210,27 @@ export class ConstellationRenderer implements GraphRenderer {
     this.scene.add(this.stars);
 
     this.pilot = new PilotController(this.canvas, container, this.camera, this.scene, {
-      nodes: () => this.sim.nodes,
+      nodes: () => this.nodes,
       pickAt: (x, y, slack) => this.pickAt(x, y, slack),
+      pickDestinationAt: (x, y, slack) => this.pickDestinationAt(x, y, slack),
+      navigationTarget: () => this.navigationTarget,
+      setNavigationTarget: target => this.setNavigationTarget(target),
+      requestFastTravel: target => this.cb.onFastTravel?.(target),
       groupLabel: gi => this.groups[gi]?.label ?? "",
-      nodeRadius: i => baseRadius(this.sim.nodes[i]?.deg ?? 0),
+      nodeRadius: i => baseRadius(this.worldNodes[i]?.deg ?? 0),
       solid: i => { const n = this.sim.nodes[i]; return !!n && !this.hidden.has(n.gi) && this.alpha[i] > 0.3; },
       clusters: () => this.clusterShells(),
-      bounds: () => this.sim.bounds(),
+      bounds: () => this.worldBounds(),
       fitDistance: r => this.fitDistance(r),
       selectedIndex: () => this.selected,
       setAim: i => this.setAim(i),
       select: i => { this.setSelected(i, false); this.cb.onSelect(i); },
-      open: (i, newTab) => this.cb.onOpen(i, newTab),
+      open: (i, newTab) => { if (!this.multiplayer) this.cb.onOpen(i, newTab); },
       onState: (active, text) => this.onPilotState(active, text),
       leave: () => this.setPilot(false),
+      onAudioMute: (which, muted) => this.cb.onAudioMute?.(which, muted),
+      onNetworkFrame: input => this.cb.onNetworkFrame?.(input),
+      onFire: (sequence, gun, aimPoint) => this.cb.onFire?.(sequence, gun, aimPoint),
     }, pilotOptions(settings));
 
     this.canvas.addEventListener("pointermove", this.onPointerMove);
@@ -207,12 +239,13 @@ export class ConstellationRenderer implements GraphRenderer {
     this.canvas.addEventListener("pointercancel", this.onPointerCancel);
     this.canvas.addEventListener("lostpointercapture", this.onPointerCancel);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
+    this.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.canvas.addEventListener("webglcontextlost", this.onContextLost);
     this.canvas.addEventListener("webglcontextrestored", this.onContextRestored);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(container);
-    this.io = new IntersectionObserver(es => { this.visible = es[es.length - 1].isIntersecting; this.stale = true; });
+    this.io = new IntersectionObserver(es => { this.visible = es[es.length - 1].isIntersecting; this.pilot.setViewVisible(this.visible); this.stale = true; });
     this.io.observe(container);
     this.resize();
     this.applySettings(settings);
@@ -221,7 +254,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   // ----------------------------------------------------------------- public API
 
-  get nodes(): SimNode[] { return this.sim.nodes; }
+  get nodes(): SimNode[] { return this.worldNodes; }
   indexOf(id: string): number { return this.idIndex.get(id) ?? -1; }
   neighbors(i: number): number[] { return this.adj[i] ?? []; }
   get selectedIndex(): number { return this.selected; }
@@ -236,9 +269,11 @@ export class ConstellationRenderer implements GraphRenderer {
     if (this.nova) { this.sim.novaCancel(); this.nova = null; this.novaBloom = 0; this.uniforms.uPulse.value = 1; this.uniforms.uNova.value = 0; }
     this.groups = data.groups;
     this.sim.setData(data);
+    this.refreshWorldNodes(true);
     const n = this.sim.nodes.length;
     this.sim.setScale(n);
     if (this.still) this.sim.settle(n > 4000 ? 120 : 300);
+    this.refreshWorldNodes();
     this.idIndex = new Map(this.sim.nodes.map((p, i) => [p.id, i]));
     this.adj = this.sim.nodes.map(() => []);
     data.links.forEach(l => {
@@ -275,7 +310,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.stars.visible = !hc;
     this.container.classList.toggle("cg-contrast", hc);
     this.container.style.setProperty("--cg-label-size", s.labelSize + "px");
-    this.pilot.setOptions(pilotOptions(s));
+    this.pilot.setOptions(pilotOptions(s, this.multiplayer));
     if (!s.pilotEnabled && this.pilot.active) this.setPilot(false);
     this.dirty = true; this.stale = true;
   }
@@ -288,8 +323,12 @@ export class ConstellationRenderer implements GraphRenderer {
 
   setPaused(p: boolean): void { this.paused = p; this.updateRotate(); }
 
-  setHover(i: number): void { if (i !== this.hover) { this.hover = i; this.dirty = true; this.updateRotate(); this.cb.onHover(i); } }
+  setHover(i: number): void {
+    if (this.multiplayer) i = -1;
+    if (i !== this.hover) { this.hover = i; this.dirty = true; this.updateRotate(); this.cb.onHover(i); }
+  }
   setSelected(i: number, fly = true): void {
+    if (this.multiplayer) i = -1;
     this.selected = i; this.follow = i; this.dirty = true; this.stale = true;
     this.updateRotate();
     if (i >= 0 && fly) this.flyTo(i);
@@ -300,6 +339,317 @@ export class ConstellationRenderer implements GraphRenderer {
 
   get canPilot(): boolean { return true; }
   get pilotActive(): boolean { return this.pilot.active; }
+
+  setWorldOrigin(slot: number): void {
+    const points: [number, number, number][] = [[0, 0, 0], [2300, 0, 0], [-1150, 0, 1992], [-1150, 0, -1992]];
+    const p = points[Math.max(0, Math.min(3, Math.floor(slot)))];
+    this.regionOrigin = p;
+    this.sim.setOrigin(...p); this.applyMapTransform(); this.refreshWorldNodes(); this.stale = true; this.dirty = true;
+  }
+
+  setMultiplayer(active: boolean): void {
+    if (!active && this.pilot.active) this.pilot.exit();
+    this.multiplayer = active;
+    if (active) {
+      if (this.drag) this.dragEnd();
+      this.press = null; this.lastClick = null;
+      this.setHover(-1); this.setSelected(-1, false);
+    }
+    if (!active) this.setNavigationTarget(null);
+    this.applyMapTransform(); this.refreshWorldNodes();
+    this.pilot.setOptions(pilotOptions(this.settings, active));
+    this.container.classList.toggle("cg-room-active", active);
+    this.remoteShips.forEach(remote => remote.ship.group.scale.setScalar(active ? 0.68 : 0.34));
+    if (!active) { this.localPlayerId = ""; this.localTopology = null; this.indicatorLayer.replaceChildren(); }
+    this.stale = true; this.dirty = true;
+  }
+
+  setLocalTopology(playerId: string, topology: AnonymousTopology | null): void {
+    if (this.navigationTarget?.ownerId === this.localPlayerId && this.navigationTarget.revision !== topology?.revision) this.setNavigationTarget(null);
+    this.localPlayerId = playerId; this.localTopology = topology;
+  }
+
+  setPlayerNames(names: Map<string, string>): void {
+    for (const [id, remote] of this.remoteShips) {
+      remote.name = names.get(id) ?? "Pilot";
+      remote.label.textContent = remote.name;
+    }
+  }
+
+  get inMultiplayer(): boolean { return this.multiplayer; }
+
+  setNavigationTarget(target: NavigationTarget | null): void {
+    if (!this.multiplayer && target) return;
+    this.navigationTarget = target;
+    this.pilot.clearTarget();
+    this.navigationMarker.visible = false;
+    this.cb.onNavigationTarget?.(target);
+    this.stale = true;
+  }
+
+  requestFastTravel(): void {
+    if (this.multiplayer && this.navigationTarget) this.cb.onFastTravel?.(this.navigationTarget);
+  }
+
+  private applyMapTransform(): void {
+    const scale = this.multiplayer ? 2 : 1;
+    this.mapGroup.scale.setScalar(scale);
+    this.mapGroup.position.set(mapCoordinate(0, this.regionOrigin[0], scale), mapCoordinate(0, this.regionOrigin[1], scale), mapCoordinate(0, this.regionOrigin[2], scale));
+    this.mapGroup.updateMatrixWorld(true);
+  }
+
+  private refreshWorldNodes(rebuild = false): void {
+    const source = this.sim.nodes;
+    if (rebuild || this.worldNodes.length !== source.length) this.worldNodes = source.map(node => ({ ...node }));
+    const scale = this.multiplayer ? 2 : 1, [ox, oy, oz] = this.regionOrigin;
+    for (let i = 0; i < source.length; i++) {
+      const n = source[i], w = this.worldNodes[i];
+      w.x = mapCoordinate(n.x, ox, scale); w.y = mapCoordinate(n.y, oy, scale); w.z = mapCoordinate(n.z, oz, scale);
+      w.vx = n.vx * scale; w.vy = n.vy * scale; w.vz = n.vz * scale;
+    }
+  }
+
+  private worldBounds(): { cx: number; cy: number; cz: number; radius: number } {
+    const b = this.sim.bounds(), scale = this.multiplayer ? 2 : 1, [ox, oy, oz] = this.regionOrigin;
+    return { cx: mapCoordinate(b.cx, ox, scale), cy: mapCoordinate(b.cy, oy, scale), cz: mapCoordinate(b.cz, oz, scale), radius: b.radius * scale };
+  }
+
+  private pickDestinationAt(px: number, py: number, slack = 0): NavigationTarget | null {
+    if (!this.multiplayer) return null;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight, dpr = this.renderer.getPixelRatio();
+    if (!w || !h) return null;
+    const cameraDir = this.fwd.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    let best: NavigationTarget | null = null, bestScore = Infinity;
+    const consider = (ownerId: string, starId: string, revision: number, x: number, y: number, z: number) => {
+      if (!starId || (x - this.camera.position.x) * cameraDir.x + (y - this.camera.position.y) * cameraDir.y + (z - this.camera.position.z) * cameraDir.z < 1) return;
+      this.tmp.set(x, y, z).project(this.camera); if (this.tmp.z > 1) return;
+      const sx = (this.tmp.x * 0.5 + 0.5) * w, sy = (-this.tmp.y * 0.5 + 0.5) * h;
+      const distance = Math.hypot(sx - px, sy - py), depth = this.camera.position.distanceTo(this.tmp2.set(x, y, z)) || 1;
+      const radius = Math.max(14, Math.min(36, this.uniforms.uScale.value * 3 / depth / dpr)) + slack;
+      if (distance <= radius) { const score = distance + depth * 0.005; if (score < bestScore) { bestScore = score; best = { ownerId, starId, revision }; } }
+    };
+    if (this.localPlayerId && this.localTopology) for (let i = 0; i < this.worldNodes.length; i++) {
+      const n = this.worldNodes[i], anonymous = this.localTopology.nodes[i];
+      if (anonymous) consider(this.localPlayerId, anonymous.id, this.localTopology.revision, n.x, n.y, n.z);
+    }
+    for (const remote of this.remoteMaps.values()) {
+      if (!remote.initialized) continue;
+      for (let i = 0; i < remote.nodeIds.length; i++) {
+        const o = i * 3;
+        consider(remote.playerId, remote.nodeIds[i], remote.revision, remote.current[o], remote.current[o + 1], remote.current[o + 2]);
+      }
+    }
+    return best;
+  }
+
+  setRemoteTopology(playerId: string, topology: AnonymousTopology): void {
+    if (this.navigationTarget?.ownerId === playerId && this.navigationTarget.revision !== topology.revision) this.setNavigationTarget(null);
+    this.removeRemoteMap(playerId);
+    const pos = new Float32Array(topology.nodes.length * 3);
+    const colors = new Float32Array(topology.nodes.length * 3);
+    const ids = new Map<string, number>();
+    topology.nodes.forEach((node, i) => {
+      ids.set(node.id, i);
+      const color = new THREE.Color(topology.groups[node.group]?.color ?? "#8b93a7");
+      colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+    });
+    const nodeSizes = Float32Array.from(topology.nodes.map(node => (baseRadius(node.degree) * 2) / CORE));
+    const nodeAlpha = new Float32Array(topology.nodes.length).fill(0.78);
+    const nodeEmphasis = new Float32Array(topology.nodes.length);
+    const nodeGeometry = new THREE.BufferGeometry();
+    nodeGeometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    nodeGeometry.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
+    nodeGeometry.setAttribute("aSize", new THREE.BufferAttribute(nodeSizes, 1));
+    nodeGeometry.setAttribute("aAlpha", new THREE.BufferAttribute(nodeAlpha, 1));
+    nodeGeometry.setAttribute("aEmph", new THREE.BufferAttribute(nodeEmphasis, 1));
+    const points = new THREE.Points(nodeGeometry, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG,
+      transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+    points.frustumCulled = false; points.renderOrder = 1; points.visible = false; this.scene.add(points);
+    const linePos = new Float32Array(topology.links.length * 6);
+    const lineGeometry = new THREE.BufferGeometry(); lineGeometry.setAttribute("position", new THREE.BufferAttribute(linePos, 3));
+    const lines = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x8ca8d4, transparent: true, opacity: 0.2, depthWrite: false }));
+    lines.frustumCulled = false; lines.renderOrder = 0; lines.visible = false; this.scene.add(lines);
+    (lines as THREE.LineSegments & { __edgeIndices?: number[] }).__edgeIndices = topology.links.flatMap(link => [ids.get(link[0]) ?? -1, ids.get(link[1]) ?? -1]);
+    this.remoteMaps.set(playerId, { playerId, points, links: lines, ids, nodeIds: topology.nodes.map(node => node.id), revision: topology.revision, target: pos.slice(), current: pos, initialized: false });
+    this.stale = true;
+  }
+
+  setRemotePositions(playerId: string, positions: Float32Array): void {
+    const remote = this.remoteMaps.get(playerId); if (!remote || positions.length !== remote.target.length) return;
+    remote.target.set(positions); remote.initialized = true; this.stale = true;
+  }
+
+  setRemoteShip(playerId: string, pose: Pose, name = "Pilot"): void {
+    let remote = this.remoteShips.get(playerId);
+    if (!remote) {
+      const ship = buildShip(); ship.group.scale.setScalar(this.multiplayer ? 0.68 : 0.34); ship.group.visible = false;
+      this.scene.add(ship.group); ship.lights.forEach(light => this.scene.add(light));
+      const indicator = document.createElement("div"); indicator.className = "cg-player-indicator"; indicator.hidden = true;
+      const arrow = document.createElement("span"); arrow.className = "cg-player-indicator-arrow";
+      const label = document.createElement("span"); label.className = "cg-player-indicator-label";
+      indicator.append(arrow, label); this.indicatorLayer.appendChild(indicator);
+      remote = { ship, target: null, name, indicator, label, arrow }; this.remoteShips.set(playerId, remote);
+    }
+    remote.name = name; remote.label.textContent = name;
+    remote.target = pose;
+    if (!pose.active || pose.health <= 0) { remote.ship.group.visible = false; remote.indicator.hidden = true; }
+    this.stale = true;
+  }
+
+  setRemoteShots(shots: ShotSnapshot[], impacts: ImpactSnapshot[], localPlayerId = ""): void {
+    const seen = new Set<string>(), now = performance.now();
+    for (const shot of shots) {
+      if (shot.ownerId === localPlayerId && this.pilot.cockpitView) continue;
+      seen.add(shot.id);
+      if (shot.ownerId === localPlayerId) {
+        const sequence = Number(shot.id.slice(shot.id.lastIndexOf(":") + 1));
+        if (Number.isSafeInteger(sequence)) this.pilot.acknowledgeShot(sequence);
+      }
+      let bolt = this.remoteShots.get(shot.id);
+      if (!bolt) {
+        const geometry = new THREE.BufferGeometry(); geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+        const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x8cecff, transparent: true, opacity: 0.95 }));
+        line.frustumCulled = false; line.renderOrder = 4; this.scene.add(line);
+        bolt = { line, ownerId: shot.ownerId, target: new THREE.Vector3(), current: new THREE.Vector3(), direction: new THREE.Vector3() };
+        bolt.current.set(...shot.origin);
+        const initial = geometry.getAttribute("position") as THREE.BufferAttribute;
+        initial.setXYZ(0, ...shot.origin); initial.setXYZ(1, ...shot.position); initial.needsUpdate = true;
+        this.remoteShots.set(shot.id, bolt);
+      }
+      bolt.target.set(...shot.position); bolt.direction.set(...shot.direction).normalize();
+    }
+    for (const [id, bolt] of this.remoteShots) if (!seen.has(id)) {
+      this.scene.remove(bolt.line); bolt.line.geometry.dispose(); (bolt.line.material as THREE.Material).dispose(); this.remoteShots.delete(id);
+    }
+    for (const impact of impacts) if (!this.networkImpacts.has(impact.id)) {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(impact.kind === "ship" ? 5 : 3.5, 8, 6), new THREE.MeshBasicMaterial({ color: impact.kind === "ship" ? 0xff625f : 0xffc46b, transparent: true, opacity: 0.9, depthWrite: false }));
+      mesh.position.set(...impact.position); mesh.renderOrder = 5; this.scene.add(mesh);
+      this.networkImpacts.set(impact.id, { mesh, expires: now + 350 });
+    }
+    this.stale = true;
+  }
+
+  setAuthoritativePose(pose: Pose): void { this.localPose = pose; this.pilot.applyAuthorityPose(pose); }
+
+  removeRemote(playerId: string): void {
+    this.stale = true;
+    for (const [id, bolt] of this.remoteShots) if (bolt.ownerId === playerId) {
+      this.scene.remove(bolt.line); bolt.line.geometry.dispose(); (bolt.line.material as THREE.Material).dispose(); this.remoteShots.delete(id);
+    }
+    const remoteShip = this.remoteShips.get(playerId);
+    if (remoteShip) {
+      remoteShip.indicator.remove();
+      this.scene.remove(remoteShip.ship.group); remoteShip.ship.lights.forEach(light => this.scene.remove(light)); remoteShip.ship.dispose(); this.remoteShips.delete(playerId);
+    }
+    this.removeRemoteMap(playerId);
+  }
+
+  private removeRemoteMap(playerId: string): void {
+    const remote = this.remoteMaps.get(playerId); if (!remote) return;
+    this.scene.remove(remote.points, remote.links); remote.points.geometry.dispose(); remote.links.geometry.dispose();
+    (remote.points.material as THREE.Material).dispose(); (remote.links.material as THREE.Material).dispose();
+    this.remoteMaps.delete(playerId); this.stale = true;
+  }
+
+  private updateRemoteMaps(): boolean {
+    let moving = false;
+    for (const remote of this.remoteMaps.values()) {
+      if (!remote.initialized) continue;
+      const p = remote.points.geometry.getAttribute("position") as THREE.BufferAttribute;
+      for (let i = 0; i < remote.current.length; i++) {
+        const delta = remote.target[i] - remote.current[i];
+        if (Math.abs(delta) > 0.05) moving = true;
+        remote.current[i] += delta * 0.35;
+      }
+      p.needsUpdate = true; remote.points.visible = true;
+      const lp = remote.links.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const edges = (remote.links as THREE.LineSegments & { __edgeIndices?: number[] }).__edgeIndices ?? [];
+      for (let i = 0; i < edges.length; i += 2) {
+        const a = edges[i] * 3, b = edges[i + 1] * 3, o = i * 3;
+        for (let k = 0; k < 3; k++) { lp.array[o + k] = remote.current[a + k] ?? 0; lp.array[o + 3 + k] = remote.current[b + k] ?? 0; }
+      }
+      lp.needsUpdate = true; remote.links.visible = true;
+    }
+    for (const remote of this.remoteShips.values()) {
+      const pose = remote.target; if (!pose || !pose.active) continue;
+      const group = remote.ship.group;
+      const target = this.tmp.set(...pose.position);
+      if (!group.visible) { group.position.copy(target); group.quaternion.set(...pose.rotation).normalize(); group.visible = true; }
+      else { group.position.lerp(target, 0.45); this.netQ.set(...pose.rotation).normalize(); group.quaternion.slerp(this.netQ, 0.45); }
+      moving = moving || group.position.distanceTo(target) > 0.05;
+    }
+    for (const bolt of this.remoteShots.values()) {
+      bolt.current.lerp(bolt.target, 0.55);
+      const a = bolt.line.geometry.getAttribute("position") as THREE.BufferAttribute;
+      a.setXYZ(0, bolt.current.x, bolt.current.y, bolt.current.z);
+      a.setXYZ(1, bolt.current.x - bolt.direction.x * 22, bolt.current.y - bolt.direction.y * 22, bolt.current.z - bolt.direction.z * 22);
+      a.needsUpdate = true; moving = true;
+    }
+    const now = performance.now();
+    for (const [id, impact] of this.networkImpacts) {
+      const left = impact.expires - now;
+      if (left <= 0) { this.scene.remove(impact.mesh); impact.mesh.geometry.dispose(); (impact.mesh.material as THREE.Material).dispose(); this.networkImpacts.delete(id); continue; }
+      const scale = 1 + (1 - left / 350) * 1.8; impact.mesh.scale.setScalar(scale);
+      (impact.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, left / 120); moving = true;
+    }
+    return moving;
+  }
+
+  private updateNavigationMarker(): void {
+    const target = this.navigationTarget;
+    if (!target || !this.multiplayer) { this.navigationMarker.visible = false; return; }
+    let at: THREE.Vector3 | null = null;
+    if (target.ownerId === this.localPlayerId && this.localTopology?.revision === target.revision) {
+      const index = this.localTopology.nodes.findIndex(node => node.id === target.starId);
+      if (index >= 0 && this.worldNodes[index]) { const n = this.worldNodes[index]; at = this.tmp.set(n.x, n.y, n.z); }
+    } else {
+      const map = this.remoteMaps.get(target.ownerId);
+      const index = map?.revision === target.revision ? map.ids.get(target.starId) : undefined;
+      if (map?.initialized && index !== undefined) { const o = index * 3; at = this.tmp.set(map.current[o], map.current[o + 1], map.current[o + 2]); }
+    }
+    if (!at) { this.navigationMarker.visible = false; return; }
+    this.navigationMarker.position.copy(at); this.navigationMarker.quaternion.copy(this.camera.quaternion); this.navigationMarker.visible = true;
+  }
+
+  private updatePlayerIndicators(): void {
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (!this.multiplayer || !w || !h) { for (const p of this.remoteShips.values()) p.indicator.hidden = true; return; }
+    this.camera.updateMatrixWorld();
+    const reference = this.localPose ? this.tmp2.set(...this.localPose.position) : this.camera.position;
+    for (const remote of this.remoteShips.values()) {
+      const pose = remote.target, group = remote.ship.group, indicator = remote.indicator;
+      if (!pose?.active || pose.health <= 0 || !group.visible) { indicator.hidden = true; continue; }
+      const point = group.position, view = point.clone().applyMatrix4(this.camera.matrixWorldInverse);
+      const projected = point.clone().project(this.camera), behind = view.z >= 0;
+      const x = (projected.x * 0.5 + 0.5) * w, y = (-projected.y * 0.5 + 0.5) * h;
+      const onScreen = !behind && x >= 24 && x <= w - 24 && y >= 26 && y <= h - 22;
+      indicator.hidden = false;
+      remote.label.textContent = `${remote.name} · ${Math.round(reference.distanceTo(point))} m`;
+      if (onScreen) {
+        indicator.classList.add("cg-player-indicator-near");
+        remote.arrow.textContent = "⌄"; remote.arrow.style.transform = "";
+        indicator.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 22)}px) translate(-50%, -50%)`;
+      } else {
+        indicator.classList.remove("cg-player-indicator-near");
+        remote.arrow.textContent = "▲";
+        let dx = x - w / 2, dy = y - h / 2;
+        if (behind) { dx = -dx; dy = -dy; }
+        if (Math.hypot(dx, dy) < 1) dy = -1;
+        const length = Math.hypot(dx, dy); dx /= length; dy /= length;
+        const edge = Math.min((w / 2 - 30) / Math.max(0.001, Math.abs(dx)), (h / 2 - 30) / Math.max(0.001, Math.abs(dy)));
+        const px = w / 2 + dx * Math.max(0, edge), py = h / 2 + dy * Math.max(0, edge);
+        remote.arrow.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI + 90}deg)`;
+        indicator.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px) translate(-50%, -50%)`;
+      }
+    }
+  }
+
+  clearSelection(): void {
+    this.lastClick = null;
+    this.pilot.clearTarget();
+    this.setSelected(-1, false);
+    this.cb.onSelect(-1);
+  }
 
   /** Enter or leave free flight. The orbit controls are parked while it runs, and the view eases back out when it ends. */
   setPilot(on: boolean): void {
@@ -315,14 +665,14 @@ export class ConstellationRenderer implements GraphRenderer {
     this.tween = null; this.follow = -1; this.autoFrame = false;
     window.clearTimeout(this.resumeTimer);
     this.controls.enabled = false; this.controls.autoRotate = false;
-    this.frameB = this.sim.bounds();
+    this.frameB = this.worldBounds();
     this.pilot.enter();
   }
 
   private onPilotState(active: boolean, text: string): void {
     if (!active) { // flight is over: hand the camera back to the orbit controls without a jump, then ease out to the full view
       const dir = this.tmp.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
-      const b = this.sim.bounds();
+      const b = this.worldBounds();
       this.controls.target.copy(this.camera.position).addScaledVector(dir, Math.max(60, this.camera.position.distanceTo(this.tmp2.set(b.cx, b.cy, b.cz))));
       this.controls.enabled = true;
       this.aim = -1; this.dirty = true; this.stale = true;
@@ -335,7 +685,7 @@ export class ConstellationRenderer implements GraphRenderer {
 
   /** The centre, rough radius and colour of every group that is showing: what Pilot mode draws as wireframe shells. */
   private clusterShells(): { x: number; y: number; z: number; r: number; color: string }[] {
-    const G = this.groups.length, nodes = this.sim.nodes;
+    const G = this.groups.length, nodes = this.worldNodes;
     const sx = new Float64Array(G), sy = new Float64Array(G), sz = new Float64Array(G), cnt = new Float64Array(G), sq = new Float64Array(G);
     for (const n of nodes) { if (this.hidden.has(n.gi)) continue; sx[n.gi] += n.x; sy[n.gi] += n.y; sz[n.gi] += n.z; cnt[n.gi]++; }
     for (let g = 0; g < G; g++) if (cnt[g]) { sx[g] /= cnt[g]; sy[g] /= cnt[g]; sz[g] /= cnt[g]; }
@@ -355,7 +705,8 @@ export class ConstellationRenderer implements GraphRenderer {
 
   flyTo(i: number): void {
     if (this.pilot.active) { this.pilot.warpToNode(i); return; }
-    const n = this.sim.nodes[i]; if (!n) return;
+    if (this.multiplayer) { const topology = this.localTopology, n = topology?.nodes[i]; if (n && topology && this.localPlayerId) this.setNavigationTarget({ ownerId: this.localPlayerId, starId: n.id, revision: topology.revision }); return; }
+    const n = this.worldNodes[i]; if (!n) return;
     const dir = this.tmp.copy(this.camera.position).sub(this.controls.target);
     if (dir.lengthSq() < 1) dir.set(0.3, 0.2, 1);
     dir.normalize();
@@ -366,7 +717,7 @@ export class ConstellationRenderer implements GraphRenderer {
   resetView(): void {
     if (this.pilot.active) { this.pilot.returnToHub(); return; }
     this.follow = -1; this.autoFrame = true;
-    const b = this.sim.bounds();
+    const b = this.worldBounds();
     const dir = this.tmp.copy(this.camera.position).sub(this.controls.target);
     if (dir.lengthSq() < 1) dir.set(0.4, 0.25, 1);
     dir.normalize();
@@ -461,16 +812,21 @@ export class ConstellationRenderer implements GraphRenderer {
     for (const [ev, fn] of [
       ["pointermove", this.onPointerMove], ["pointerleave", this.onPointerLeave], ["pointercancel", this.onPointerCancel], ["lostpointercapture", this.onPointerCancel],
       ["pointerup", this.onPointerUp],
+      ["contextmenu", this.onContextMenu],
       ["webglcontextlost", this.onContextLost], ["webglcontextrestored", this.onContextRestored],
     ] as [string, EventListener][]) this.canvas.removeEventListener(ev, fn);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown, true);
     this.pilot.destroy();
+    for (const bolt of this.remoteShots.values()) { this.scene.remove(bolt.line); bolt.line.geometry.dispose(); (bolt.line.material as THREE.Material).dispose(); }
+    for (const impact of this.networkImpacts.values()) { this.scene.remove(impact.mesh); impact.mesh.geometry.dispose(); (impact.mesh.material as THREE.Material).dispose(); }
+    this.remoteShots.clear(); this.networkImpacts.clear();
     this.disposeNodes();
     this.stars.geometry.dispose(); (this.stars.material as THREE.Material).dispose();
     // EffectComposer.dispose() does not free its passes, and browsers cap live WebGL contexts
     this.bloom.dispose(); this.renderPass.dispose(); this.composer.dispose();
+    this.navigationMarker.geometry.dispose(); (this.navigationMarker.material as THREE.Material).dispose();
     this.renderer.dispose(); this.renderer.forceContextLoss();
-    this.canvas.remove(); this.labelLayer.remove(); this.flashEl.remove();
+    this.canvas.remove(); this.labelLayer.remove(); this.indicatorLayer.remove(); this.flashEl.remove();
   }
 
   // ----------------------------------------------------------------- setup
@@ -489,7 +845,7 @@ export class ConstellationRenderer implements GraphRenderer {
   private disposeNodes(): void {
     for (const o of [this.nodePoints, this.lines]) {
       if (!o) continue;
-      this.scene.remove(o); o.geometry.dispose(); (o.material as THREE.Material).dispose();
+    this.mapGroup.remove(o); o.geometry.dispose(); (o.material as THREE.Material).dispose();
     }
     this.nodePoints = null; this.lines = null;
   }
@@ -512,7 +868,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.nodePoints = new THREE.Points(g, m);
     this.nodePoints.frustumCulled = false;
     this.nodePoints.renderOrder = 2;
-    this.scene.add(this.nodePoints);
+    this.mapGroup.add(this.nodePoints);
 
     this.linePos = new Float32Array(l * 6); this.lineCol = new Float32Array(l * 6);
     const lg = new THREE.BufferGeometry();
@@ -521,7 +877,7 @@ export class ConstellationRenderer implements GraphRenderer {
     this.lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 1;
-    this.scene.add(this.lines);
+    this.mapGroup.add(this.lines);
   }
 
   private recolor(): void {
@@ -574,8 +930,14 @@ export class ConstellationRenderer implements GraphRenderer {
   };
   private onPointerLeave = () => { this.pointer.inside = false; this.pointer.moved = true; };
   private onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) { this.clearSelection(); return; }
     if (e.button !== 0 || this.pilot.active) return; // in Pilot mode a press is a shot, handled by the pilot
     this.setPointer(e);
+    if (this.multiplayer) {
+      this.setHover(-1);
+      this.press = { i: -1, x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+      return;
+    }
     let hit = this.pick();
     if (hit < 0) hit = this.pick(PRESS_SLACK_PX); // notes drift while the hand travels, so a press may land just beside one
     this.setHover(hit); // touch taps never fire a move first
@@ -585,12 +947,18 @@ export class ConstellationRenderer implements GraphRenderer {
       try { this.canvas.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
     }
   };
+  private onContextMenu = (e: MouseEvent) => { e.preventDefault(); this.clearSelection(); };
   private onPointerUp = (e: PointerEvent) => {
     if (e.button !== 0 || this.pilot.active) return;
     const p = this.press; this.press = null;
     if (this.drag) { this.dragEnd(); return; }
     this.endPress(p);
     if (!p) return;
+    if (this.multiplayer) {
+      const r = this.canvas.getBoundingClientRect();
+      this.setNavigationTarget(this.pickDestinationAt(e.clientX - r.left, e.clientY - r.top, PRESS_SLACK_PX));
+      return;
+    }
     // Not a drag, so it is a click. It belongs to the note that was pressed, even if that note drifted a little
     // or the hand shook: nothing is re-aimed at release.
     const now = performance.now(), last = this.lastClick;
@@ -658,7 +1026,7 @@ export class ConstellationRenderer implements GraphRenderer {
   /** The note under a point of the canvas (CSS pixels), ignoring notes behind the camera. */
   private pickAt(px: number, py: number, slack = 0): number {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight, dpr = this.renderer.getPixelRatio();
-    const v = this.tmp, nodes = this.sim.nodes, cam = this.camera.position;
+    const v = this.tmp, nodes = this.worldNodes, cam = this.camera.position;
     const fx = this.fwd.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
     let best = -1, bestScore = 1e9;
     for (let i = 0; i < nodes.length; i++) {
@@ -694,8 +1062,9 @@ export class ConstellationRenderer implements GraphRenderer {
     this.last = now; this.age += dt; this.frameNo++;
     if (!this.nodePoints) return;
 
-    let moving = false;
-    if (!this.paused) { this.sim.step(dt); moving = this.sim.isActive(); }
+    let moving = this.updateRemoteMaps();
+    if (!this.paused) { this.sim.step(dt); moving = this.sim.isActive() || moving; }
+    this.refreshWorldNodes();
     if (!this.drag && !this.pilot.active && (this.pointer.moved || (this.pointer.inside && moving && this.frameNo % 8 === 0))) {
       this.pointer.moved = false;
       this.setHover(this.pointer.inside ? this.pick() : -1);
@@ -712,7 +1081,9 @@ export class ConstellationRenderer implements GraphRenderer {
       this.controls.target.copy(this.camera.position).addScaledVector(this.tmp.set(0, 0, -1).applyQuaternion(this.camera.quaternion), 300);
       this.stale = true;
     } else {
-      this.updateCamera(now);
+    this.updateCamera(now);
+    this.updateNavigationMarker();
+    this.updatePlayerIndicators();
       camMoved = this.controls.update(dt);
     }
     if (!(moving || animating || camMoved || this.stale || this.tween || this.follow >= 0)) return; // fully at rest: draw nothing
@@ -860,21 +1231,21 @@ export class ConstellationRenderer implements GraphRenderer {
     if (!this.fitDone && this.age > 1.8 && this.sim.nodes.length) { this.fitDone = true; this.resetView(); }
     if (this.tween) {
       const t = Math.min(1, (now - this.tween.t0) / this.tween.dur), e = 1 - Math.pow(1 - t, 3);
-      if (this.follow >= 0 && this.sim.nodes[this.follow]) { // keep aiming at the node while it drifts
-        const n = this.sim.nodes[this.follow], dirLen = this.tween.p1.distanceTo(this.tween.t1v);
+      if (this.follow >= 0 && this.worldNodes[this.follow]) { // keep aiming at the node while it drifts
+        const n = this.worldNodes[this.follow], dirLen = this.tween.p1.distanceTo(this.tween.t1v);
         const dir = this.tmp.copy(this.tween.p1).sub(this.tween.t1v).normalize();
         this.tween.t1v.set(n.x, n.y, n.z); this.tween.p1.copy(this.tween.t1v).addScaledVector(dir, dirLen);
       }
       this.controls.target.lerpVectors(this.tween.t0v, this.tween.t1v, e);
       this.camera.position.lerpVectors(this.tween.p0, this.tween.p1, e);
       if (t >= 1) this.tween = null;
-    } else if (this.follow >= 0 && this.sim.nodes[this.follow]) {
-      const n = this.sim.nodes[this.follow];
+    } else if (this.follow >= 0 && this.worldNodes[this.follow]) {
+      const n = this.worldNodes[this.follow];
       const d = this.tmp.set(n.x, n.y, n.z).sub(this.controls.target).multiplyScalar(this.still ? 1 : 0.12);
       this.controls.target.add(d); this.camera.position.add(d);
     } else if (this.fitDone && !this.still && !this.paused && !this.userActive) {
       // the clusters keep orbiting, so keep the camera on them: ease toward their centre, and back in if the view has drifted far away
-      if (this.frameNo % (this.nova ? 5 : 45) === 0 || !this.frameB) this.frameB = this.sim.bounds();
+      if (this.frameNo % (this.nova ? 5 : 45) === 0 || !this.frameB) this.frameB = this.worldBounds();
       const b = this.frameB;
       const ease = this.nova ? 0.09 : 0.03;
       const d = this.tmp.set(b.cx, b.cy, b.cz).sub(this.controls.target).multiplyScalar(ease);
@@ -888,7 +1259,8 @@ export class ConstellationRenderer implements GraphRenderer {
   }
 
   private updateLabels(): void {
-    const s = this.settings, nodes = this.sim.nodes, hc = effectiveHighContrast(s);
+    const s = this.settings, nodes = this.worldNodes, hc = effectiveHighContrast(s);
+    if (this.multiplayer) { for (const label of this.labels) label.toggleClass("cg-hidden", true); return; }
     if (this.nova && this.nova.stage !== "trace") { for (const l of this.labels) l.toggleClass("cg-hidden", true); return; }
     const want: number[] = [];
     const seen = new Set<number>();

@@ -3,12 +3,17 @@ import type { SimNode } from "./types";
 import { PilotAudio } from "./sfx";
 import { buildShip, type Ship } from "./ship";
 import { buildCockpit, type Cockpit } from "./cockpit";
+import type { FlightInput, NavigationTarget, Pose } from "./multiplayer";
 
 /** What the pilot needs from the renderer. Kept narrow so the controller never reaches into renderer state. */
 export interface PilotHost {
   nodes(): SimNode[];
   /** The note under a screen point (CSS pixels, relative to the canvas), or -1. `slack` widens every target. */
   pickAt(x: number, y: number, slack: number): number;
+  pickDestinationAt(x: number, y: number, slack: number): NavigationTarget | null;
+  navigationTarget(): NavigationTarget | null;
+  setNavigationTarget(target: NavigationTarget | null): void;
+  requestFastTravel(target: NavigationTarget): void;
   groupLabel(gi: number): string;
   /** Visual radius of a note in scene units. */
   nodeRadius(i: number): number;
@@ -26,6 +31,9 @@ export interface PilotHost {
   onState(active: boolean, text: string): void;
   /** The reader pressed Esc with the mouse already free: leave Pilot mode. */
   leave(): void;
+  onAudioMute(which: "engine" | "afterburner", muted: boolean): void;
+  onNetworkFrame(input: FlightInput): void;
+  onFire(sequence: number, gun: number, aimPoint: [number, number, number]): void;
 }
 
 export interface PilotOptions {
@@ -34,6 +42,8 @@ export interface PilotOptions {
   view: "chase" | "cockpit";
   sound: boolean;
   volume: number;
+  muteEngine: boolean;
+  muteAfterburner: boolean;
   wireframe: boolean;
   /** Scales turn rates and how quickly the ship starts and stops turning. */
   agility: number;
@@ -41,6 +51,7 @@ export interface PilotOptions {
   speed: number;
   /** Capture: the mouse is locked and its movement steers. Cursor: the pointer stays visible and its distance from the centre steers. */
   mouse: "capture" | "cursor";
+  multiplayer: boolean;
 }
 
 // ---- scale. Cruise speed is set from how big the network is, so crossing it takes a believable amount of time.
@@ -75,7 +86,8 @@ const ANG_ACC = 4.0;       // radians per second squared: how quickly the ship c
 const STICK_GAIN = 0.0035; // stick deflection per pixel of mouse movement at sensitivity 1
 const STICK_DECAY = 0.9;   // how quickly the virtual stick re-centres when the mouse stops
 const BOOST_DRAIN = 0.28;  // afterburner energy per second (1 is full)
-const BOOST_REGEN = 0.16;
+const BOOST_REGEN = 0.08;
+const BOOST_REGEN_DELAY = 1.5;
 const BOOST_HOLD = 3.0;    // seconds the tank stays completely empty after it runs dry, before it starts to refill
 const BOOST_RELOCK = 0.3;  // and then the afterburner stays off until the tank has refilled this far
 const CAM_RATE = 4.5;      // how tightly the chase camera follows the ship's orientation; lower trails more
@@ -125,8 +137,8 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["Mouse"], label: p => p.cursorMode ? "Steer: move away from centre" : "Steer", codes: [null] },
     { caps: ["Click", "F"], label: "Fire", codes: [null, "KeyF"] },
     { caps: ["T"], label: "Lock target", codes: ["KeyT"] },
-    { caps: ["G"], label: "Warp to target", codes: ["KeyG"] },
-    { caps: ["H"], label: "Back to the hub", codes: ["KeyH"] },
+    { caps: ["G"], label: p => p.multiplayer ? "Warp disabled in multiplayer" : "Warp to target", codes: ["KeyG"] },
+    { caps: ["H"], label: p => p.multiplayer ? "Warp disabled in multiplayer" : "Back to the hub", codes: ["KeyH"] },
   ] },
   { title: "View", rows: [
     { caps: ["V"], label: "Chase / cockpit", codes: ["KeyV"] },
@@ -145,7 +157,7 @@ interface Warp {
   dist: number;                 // how far from the target to stop
 }
 /** A bolt flies from the gun to the note it was aimed at, and the shot counts when it lands. */
-interface Bolt { from: THREE.Vector3; node: number; point: THREE.Vector3; travelled: number; ctrl: boolean; landed: boolean; fade: number }
+interface Bolt { from: THREE.Vector3; node: number; point: THREE.Vector3; travelled: number; ctrl: boolean; landed: boolean; fade: number; sequence?: number }
 interface Burst { age: number; pos: THREE.Vector3; size: number; line: THREE.LineSegments }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -170,11 +182,17 @@ export class PilotController {
   private spin = new THREE.Vector3();          // angular velocity in the ship's own axes: x pitch, y yaw, z roll (rad/s)
   private stick = new THREE.Vector2();         // virtual joystick: x yaw, y pitch, each -1..1
   private energy = 1;
+  private health = 100;
+  private respawnLeft = 0;
+  private protectionLeft = 0;
   private boostLocked = false;
   private boosting = false;
   private cursor = { x: 0, y: 0, inside: false }; // where the pointer is over the scene, in CSS px (cursor steering)
   private ringW = 0; private ringH = 0;
   private holdLeft = 0;                    // seconds left before an emptied tank starts refilling
+  private regenDelay = 0;
+  private roomVisible = true;
+  private networkAccumulator = 0;
   private shake = 0;                       // camera shake from impacts, 0..1
   private lastBump = -1e9;
   private mouseDX = 0; private mouseDY = 0; // mouse movement since the last frame
@@ -186,10 +204,12 @@ export class PilotController {
   private camQuat = new THREE.Quaternion();
 
   private aim = -1;
+  private aimDestination: NavigationTarget | null = null;
   private aimX = 0; private aimY = 0;          // where the nose points, on screen (CSS px)
   private firing = false;
   private cooldown = 0;
   private gun = 0;
+  private fireSequence = 0;
   private lastShot = { i: -1, t: -1e9 };
   private warp: Warp | null = null;
   private bolts: Bolt[] = [];
@@ -221,7 +241,11 @@ export class PilotController {
   private readMeta: HTMLDivElement;
   private speedFill: HTMLDivElement;
   private energyFill: HTMLDivElement;
+  private healthFill: HTMLDivElement;
+  private destruction: HTMLDivElement;
   private flags: HTMLDivElement;
+  private muteEngineButton: HTMLButtonElement;
+  private muteAfterburnerButton: HTMLButtonElement;
   private ringInner: HTMLDivElement;
   private keysPanel: HTMLDivElement;
   private keyCaps = new Map<string, HTMLElement[]>(); // key code -> the key caps on the panel that light up for it
@@ -293,10 +317,18 @@ export class PilotController {
     this.readName = this.readout.createDiv({ cls: "cg-pilot-name" });
     this.readMeta = this.readout.createDiv({ cls: "cg-pilot-meta" });
     this.flags = this.hud.createDiv({ cls: "cg-pilot-flags" });
+    const audioControls = this.hud.createDiv({ cls: "cg-pilot-audio" });
+    this.muteEngineButton = audioControls.createEl("button", { cls: "cg-pilot-audio-btn", text: "Engine on", attr: { type: "button", "aria-pressed": "false", "aria-label": "Mute engine" } });
+    this.muteAfterburnerButton = audioControls.createEl("button", { cls: "cg-pilot-audio-btn", text: "Afterburner on", attr: { type: "button", "aria-pressed": "false", "aria-label": "Mute afterburner" } });
+    this.muteEngineButton.addEventListener("click", () => this.host.onAudioMute("engine", !this.opts.muteEngine));
+    this.muteAfterburnerButton.addEventListener("click", () => this.host.onAudioMute("afterburner", !this.opts.muteAfterburner));
     const speed = this.hud.createDiv({ cls: "cg-pilot-speed" });
     this.speedFill = speed.createDiv({ cls: "cg-pilot-speed-fill" });
     const energy = this.hud.createDiv({ cls: "cg-pilot-energy" });
     this.energyFill = energy.createDiv({ cls: "cg-pilot-energy-fill" });
+    const health = this.hud.createDiv({ cls: "cg-pilot-health" });
+    this.healthFill = health.createDiv({ cls: "cg-pilot-health-fill" });
+    this.destruction = this.hud.createDiv({ cls: "cg-pilot-destroyed", attr: { role: "status" } });
     this.readout.hidden = true;
     this.keysPanel = this.buildKeysPanel();
   }
@@ -344,7 +376,12 @@ export class PilotController {
 
   setOptions(opts: PilotOptions): void {
     const mouseChanged = opts.mouse !== this.opts.mouse;
+    const multiplayerChanged = opts.multiplayer !== this.opts.multiplayer;
     this.opts = { ...opts };
+    if (multiplayerChanged) {
+      this.lastShot = { i: -1, t: -1e9 }; this.aimDestination = null; this.bolts.length = 0; this.warp = null; this.cooldown = 0;
+      if (opts.multiplayer) this.fireSequence = 0;
+    }
     if (mouseChanged && this.active) {
       this.stick.set(0, 0); this.mouseDX = this.mouseDY = this.smX = this.smY = 0;
       if (opts.mouse === "cursor" && this.locked) document.exitPointerLock();
@@ -352,6 +389,12 @@ export class PilotController {
       this.applyLook(); this.setHint();
     }
     this.audio.setOptions(opts.sound, opts.volume);
+    this.audio.setEngineMuted(opts.muteEngine);
+    this.audio.setAfterburnerMuted(opts.muteAfterburner);
+    this.muteEngineButton.textContent = opts.muteEngine ? "Engine muted" : "Engine on";
+    this.muteEngineButton.setAttribute("aria-pressed", String(opts.muteEngine));
+    this.muteAfterburnerButton.textContent = opts.muteAfterburner ? "Afterburner muted" : "Afterburner on";
+    this.muteAfterburnerButton.setAttribute("aria-pressed", String(opts.muteAfterburner));
     if (this.active) this.cruise = this.cruiseSpeed();
     this.applyLook();
   }
@@ -362,6 +405,7 @@ export class PilotController {
    * about 12 s for 100 notes, 17 s for 1,000, 24 s for 10,000 (never under 10 s or over 60 s), times the speed setting.
    */
   private cruiseSpeed(): number {
+    if (this.opts.multiplayer) return 100;
     const b = this.host.bounds(), n = Math.max(20, this.host.nodes().length);
     const crossSeconds = clamp(CROSS_BASE * Math.pow(n / 100, CROSS_GROWTH), CROSS_MIN, CROSS_MAX);
     return Math.max(MIN_CRUISE, (2 * b.radius) / crossSeconds) * this.opts.speed;
@@ -369,7 +413,7 @@ export class PilotController {
 
   /** Show or hide the plane and the wireframe dressing to match the options. */
   private applyLook(): void {
-    const on = this.active;
+    const on = this.active && this.health > 0;
     this.ship.group.visible = on && this.opts.view === "chase";
     this.ship.lights.forEach(l => { l.visible = on && this.opts.view === "chase"; });
     this.cockpit.group.visible = on && this.opts.view === "cockpit";
@@ -385,26 +429,55 @@ export class PilotController {
 
   /** True when the pointer stays visible and steers by its distance from the centre. */
   get cursorMode(): boolean { return this.opts.mouse === "cursor"; }
+  get multiplayer(): boolean { return this.opts.multiplayer; }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas; }
+  get cockpitView(): boolean { return !this.chase; }
+
+  acknowledgeShot(sequence: number): void {
+    this.bolts = this.bolts.filter(bolt => bolt.sequence !== sequence);
+  }
+
+  clearTarget(): void {
+    this.lastShot = { i: -1, t: -1e9 };
+    if (this.aim !== -1) { this.aim = -1; this.host.setAim(-1); }
+    this.readout.hidden = true;
+  }
+
+  applyAuthorityPose(pose: Pose): void {
+    const wasAlive = this.health > 0;
+    const target = new THREE.Vector3(...pose.position);
+    this.pos.lerp(target, this.active ? 0.45 : 1);
+    this.quat.slerp(new THREE.Quaternion(...pose.rotation).normalize(), this.active ? 0.45 : 1);
+    this.vel.set(...pose.velocity); this.energy = pose.energy; this.health = pose.health;
+    this.boostLocked = pose.boostLocked; this.holdLeft = pose.boostHold; this.regenDelay = pose.regenDelay;
+    this.respawnLeft = pose.respawnAt; this.protectionLeft = pose.protectedUntil;
+    this.boosting = false;
+    if (wasAlive !== (this.health > 0)) this.applyLook();
+    this.updateHud(this.vel.length() / (this.cruise * BOOST_TOP));
+  }
 
   enter(): void {
     if (this.active) return;
     this.active = true;
+    this.roomVisible = true;
     this.vel.set(0, 0, 0); this.spin.set(0, 0, 0); this.stick.set(0, 0);
     this.keys.clear(); this.firing = false; this.warp = null; this.cooldown = 0;
     this.lastShot = { i: -1, t: -1e9 }; this.aim = -1; this.frame = 0; this.clock = 0;
-    this.energy = 1; this.boostLocked = false; this.boosting = false; this.bank = this.tilt = 0;
-    this.holdLeft = 0; this.shake = 0; this.mouseDX = this.mouseDY = this.smX = this.smY = 0; this.dtS = 0;
+    if (!this.opts.multiplayer) { this.energy = 1; this.health = 100; this.boostLocked = false; this.holdLeft = 0; this.regenDelay = 0; }
+    this.boosting = false; this.bank = this.tilt = 0;
+    this.shake = 0; this.mouseDX = this.mouseDY = this.smX = this.smY = 0; this.dtS = 0; this.networkAccumulator = 0;
     this.cursor.inside = false; this.ringW = this.ringH = 0;
     this.showKeys(true);
     this.cruise = this.cruiseSpeed();
 
     // start where the camera is looking from: the ship goes just ahead of it, so nothing jumps
     this.camQuat.copy(this.camera.quaternion);
-    this.quat.copy(this.camera.quaternion);
-    this.pos.copy(this.camera.position);
-    if (this.chase) this.pos.sub(this.tmpV.copy(CAM_OFFSET).applyQuaternion(this.quat));
+    if (!this.opts.multiplayer) {
+      this.quat.copy(this.camera.quaternion);
+      this.pos.copy(this.camera.position);
+      if (this.chase) this.pos.sub(this.tmpV.copy(CAM_OFFSET).applyQuaternion(this.quat));
+    }
 
     this.container.classList.add("cg-piloting");
     this.hud.hidden = false;
@@ -436,6 +509,7 @@ export class PilotController {
 
   exit(say = true): void {
     if (!this.active) return;
+    const notifyRoom = this.opts.multiplayer;
     this.active = false;
     this.container.removeEventListener("keydown", this.onKeyDown, true);
     this.container.removeEventListener("keyup", this.onKeyUp, true);
@@ -462,8 +536,17 @@ export class PilotController {
     this.hud.hidden = true;
     this.container.classList.remove("cg-piloting", "cg-cursor");
     this.host.setAim(-1); this.aim = -1;
+    if (notifyRoom) this.host.onNetworkFrame({ thrust: 0, strafe: 0, lift: 0, roll: 0, pitch: 0, yaw: 0, boost: false, brake: false, fire: false, active: false });
     if (say) this.host.onState(false, "Pilot mode off");
     else this.host.onState(false, "");
+  }
+
+  setViewVisible(visible: boolean): void {
+    this.roomVisible = visible;
+    if (!visible) {
+      this.keys.clear(); this.firing = false;
+      if (this.active && this.opts.multiplayer) this.host.onNetworkFrame(this.networkInput());
+    }
   }
 
   destroy(): void {
@@ -499,6 +582,7 @@ export class PilotController {
 
   /** Fly to a note and stop in front of it, looking at it. */
   warpToNode(i: number): void {
+    if (this.opts.multiplayer) return;
     const n = this.host.nodes()[i]; if (!n) return;
     const from = this.tmpV.copy(this.pos).sub(this.tmpV2.set(n.x, n.y, n.z));
     if (from.lengthSq() < 1) from.set(0.3, 0.2, 1);
@@ -507,6 +591,7 @@ export class PilotController {
 
   /** Back out to where the whole constellation fits in view. */
   returnToHub(): void {
+    if (this.opts.multiplayer) return;
     const b = this.host.bounds();
     const c = new THREE.Vector3(b.cx, b.cy, b.cz);
     const from = this.tmpV.copy(this.pos).sub(c);
@@ -549,8 +634,12 @@ export class PilotController {
     this.lightKey(e.code, true);
     switch (e.code) {
       case "KeyK": this.showKeys(!this.keysShown); break;
-      case "KeyT": this.toggleLock(); break;
-      case "KeyG": { const t = this.host.selectedIndex() >= 0 ? this.host.selectedIndex() : this.aim; if (t >= 0) this.warpToNode(t); break; }
+      case "KeyT": if (this.opts.multiplayer) { if (this.aimDestination) this.host.setNavigationTarget(this.aimDestination); } else this.toggleLock(); break;
+      case "KeyG": {
+        if (this.opts.multiplayer) { const target = this.host.navigationTarget(); if (target) this.host.requestFastTravel(target); }
+        else { const t = this.host.selectedIndex() >= 0 ? this.host.selectedIndex() : this.aim; if (t >= 0) this.warpToNode(t); }
+        break;
+      }
       case "KeyH": this.returnToHub(); break;
       case "KeyV": this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); break;
     }
@@ -601,8 +690,11 @@ export class PilotController {
     this.setHint();
   };
   private onLockError = () => this.setHint();
-  private onVisibility = () => this.audio.mute(document.hidden);
-  private onWindowBlur = () => { this.audio.mute(true); this.cursor.inside = false; this.firing = false; };
+  private onVisibility = () => {
+    this.audio.mute(document.hidden);
+    if (document.hidden) { this.keys.clear(); this.firing = false; if (this.active && this.opts.multiplayer) this.host.onNetworkFrame(this.networkInput()); }
+  };
+  private onWindowBlur = () => { this.audio.mute(true); this.cursor.inside = false; this.firing = false; this.keys.clear(); if (this.active && this.opts.multiplayer) this.host.onNetworkFrame(this.networkInput()); };
   private onWindowFocus = () => this.audio.mute(document.hidden);
 
   // ----------------------------------------------------------------- frame
@@ -614,6 +706,9 @@ export class PilotController {
     dt = this.dtS;
     const k = this.keys;
     this.frame++; this.clock += dt * 1000;
+    this.networkAccumulator += dt;
+    this.respawnLeft = Math.max(0, this.respawnLeft - dt * 1000);
+    this.protectionLeft = Math.max(0, this.protectionLeft - dt * 1000);
 
     const thrust = (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
     const strafe = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
@@ -630,11 +725,13 @@ export class PilotController {
     this.boosting = wantBoost && thrust > 0 && !this.boostLocked && this.energy > 0 && !this.warp;
     if (this.boosting) {
       this.energy -= BOOST_DRAIN * dt;
+      this.regenDelay = BOOST_REGEN_DELAY;
       if (this.energy <= 0) { this.energy = 0; this.boostLocked = true; this.boosting = false; this.holdLeft = BOOST_HOLD; } // run dry: the tank stays empty for a while
-    } else if (this.holdLeft > 0) {
+    } else if (this.holdLeft > 0 || this.regenDelay > 0) {
       this.holdLeft = Math.max(0, this.holdLeft - dt); // empty and not refilling yet
+      this.regenDelay = Math.max(0, this.regenDelay - dt);
     } else {
-      this.energy = Math.min(1, this.energy + BOOST_REGEN * (wantBoost && !this.boostLocked ? 0.4 : 1) * dt);
+      this.energy = Math.min(1, this.energy + BOOST_REGEN * dt);
       if (this.boostLocked && this.energy >= BOOST_RELOCK) this.boostLocked = false;
     }
     if (this.boosting && !was) this.audio.afterburner();
@@ -642,7 +739,7 @@ export class PilotController {
     if (!this.warp) {
       this.turn(dt, rollIn, speed01);
       this.thrustAndDrag(dt, thrust, strafe, lift, brake);
-      this.keepInRange(dt);
+      if (!this.opts.multiplayer) this.keepInRange(dt);
     }
 
     this.updateCamera(dt);
@@ -652,13 +749,26 @@ export class PilotController {
 
     this.updateAimPoint();
     this.cooldown = Math.max(0, this.cooldown - dt);
-    if ((this.firing || k.has("KeyF")) && this.cooldown <= 0 && (this.locked || k.has("KeyF") || this.opts.mouse === "cursor")) this.fire(false);
+    if (this.health > 0 && (this.firing || k.has("KeyF")) && this.cooldown <= 0 && (this.locked || k.has("KeyF") || this.opts.mouse === "cursor")) this.fire(false);
 
     if (this.frame % 2 === 0) this.updateAim();
     this.updateBolts(dt);
     this.updateWireframes(dt);
     this.updateHud(speed / (this.cruise * BOOST_TOP));
+    if (this.opts.multiplayer && this.networkAccumulator >= 0.05) { this.networkAccumulator %= 0.05; this.host.onNetworkFrame(this.networkInput()); }
     if (this.keysShown && !this.keysQuiet && this.clock > this.keysQuietAt) { this.keysQuiet = true; this.keysPanel.classList.add("cg-quiet"); }
+  }
+
+  private networkInput(): FlightInput {
+    return {
+      thrust: (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0),
+      strafe: (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0),
+      lift: (this.keys.has("Space") ? 1 : 0) - (this.keys.has("KeyC") ? 1 : 0),
+      roll: (this.keys.has("KeyQ") ? 1 : 0) - (this.keys.has("KeyE") ? 1 : 0),
+      pitch: this.stick.y, yaw: this.stick.x,
+      boost: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"), brake: this.keys.has("KeyX"), fire: this.firing || this.keys.has("KeyF"),
+      active: this.active && this.roomVisible && !document.hidden && document.hasFocus(),
+    };
   }
 
   /**
@@ -678,6 +788,15 @@ export class PilotController {
       this.stick.y += -this.smY * k * (this.opts.invertY ? -1 : 1);
       if (this.stick.length() > 1) this.stick.normalize();
       this.stick.multiplyScalar(Math.exp(-STICK_DECAY * dt));
+    }
+
+    if (this.opts.multiplayer) {
+      this.spin.set(clamp(this.stick.y, -1, 1) * PITCH_RATE, clamp(this.stick.x, -1, 1) * YAW_RATE, rollIn * ROLL_RATE);
+      this.quat.multiply(this.tmpQ.setFromAxisAngle(X_AXIS, this.spin.x * dt));
+      this.quat.multiply(this.tmpQ.setFromAxisAngle(Y_AXIS, this.spin.y * dt));
+      this.quat.multiply(this.tmpQ.setFromAxisAngle(Z_AXIS, this.spin.z * dt));
+      this.quat.normalize();
+      return;
     }
 
     // the spin eases toward the rate the stick asks for, and can change only so fast
@@ -737,6 +856,7 @@ export class PilotController {
 
     // drag: quadratic in speed, set so that the main engine alone holds cruise speed
     this.vel.divideScalar(1 + (A / (this.cruise * this.cruise)) * sp * dt);
+    if (this.opts.multiplayer) { this.pos.addScaledVector(this.vel, dt); return; }
     this.vel.divideScalar(1 + TURN_BLEED * this.spin.length() * dt);
 
     // grip: turn the direction of travel toward the nose
@@ -839,7 +959,7 @@ export class PilotController {
     this.camQuat.slerp(this.quat, 1 - Math.exp(-rate * dt));
     cam.quaternion.copy(this.camQuat);
     cam.position.copy(this.pos);
-    if (chase) cam.position.add(this.tmpV.copy(CAM_OFFSET).applyQuaternion(this.camQuat));
+    if (chase) cam.position.add(this.tmpV.copy(CAM_OFFSET).setZ(this.opts.multiplayer ? 6.5 : CAM_OFFSET.z).applyQuaternion(this.camQuat));
     const rattle = (this.boosting ? 0.07 : 0) + this.shake * 0.6; // afterburner rattle, and the jolt of an impact
     if (rattle > 0) cam.position.add(this.tmpV.set(Math.random() - 0.5, Math.random() - 0.5, 0).multiplyScalar(rattle).applyQuaternion(this.camQuat));
     this.shake = Math.max(0, this.shake - dt * 2.5);
@@ -863,7 +983,7 @@ export class PilotController {
     const g = this.ship.group;
     g.position.copy(this.pos);
     g.quaternion.copy(this.quat).multiply(this.tmpQ.setFromEuler(this.tmpE.set(this.tilt, 0, this.bank)));
-    g.scale.setScalar(SHIP_SCALE);
+    g.scale.setScalar(SHIP_SCALE * (this.opts.multiplayer ? 2 : 1));
     g.updateMatrixWorld(true);
 
     const len = 0.35 + speed01 * 2.0 + (this.boosting ? 1.2 : 0), flick = 1 + Math.sin(this.clock * 0.09) * 0.08;
@@ -898,14 +1018,23 @@ export class PilotController {
     }
     this.speedFill.style.width = (clamp(top01, 0, 1) * 100).toFixed(1) + "%";
     this.energyFill.style.width = (this.energy * 100).toFixed(1) + "%";
+    this.healthFill.style.width = (clamp(this.health / 100, 0, 1) * 100).toFixed(1) + "%";
     this.energyFill.classList.toggle("cg-low", this.boostLocked);
-    const text = this.boosting ? "AFTERBURNER" : this.boostLocked ? (this.holdLeft > 0 ? `EMPTY ${this.holdLeft.toFixed(1)}s` : "RECHARGING") : "";
+    this.destruction.hidden = this.health > 0;
+    if (this.health <= 0) this.destruction.textContent = `SHIP DESTROYED · RESPAWNING IN ${Math.ceil(this.respawnLeft / 1000)}s`;
+    const text = this.health <= 0 ? "DESTROYED" : this.protectionLeft > 0 ? "SPAWN PROTECTED" : this.boosting ? "AFTERBURNER" : this.boostLocked ? (this.holdLeft > 0 ? `EMPTY ${this.holdLeft.toFixed(1)}s` : "RECHARGING") : "";
     if (text !== this.flagsText) { this.flagsText = text; this.flags.textContent = text; }
   }
 
   // ----------------------------------------------------------------- aim and fire
 
   private updateAim(): void {
+    if (this.opts.multiplayer) {
+      this.aim = -1; this.host.setAim(-1);
+      this.aimDestination = this.host.pickDestinationAt(this.aimX, this.aimY, AIM_SLACK);
+      this.readout.hidden = true;
+      return;
+    }
     const i = this.host.pickAt(this.aimX, this.aimY, AIM_SLACK);
     if (i !== this.aim) { this.aim = i; this.host.setAim(i); if (i >= 0) this.audio.tick(); }
     const n = i >= 0 ? this.host.nodes()[i] : null;
@@ -923,14 +1052,20 @@ export class PilotController {
   }
 
   private fire(ctrl: boolean): void {
-    if (this.cooldown > 0) return;
+    if (this.health <= 0 || this.cooldown > 0) return;
     this.cooldown = FIRE_GAP;
-    const i = this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
     const point = new THREE.Vector3(0, 0, -RANGE).applyQuaternion(this.quat).add(this.pos);
     // guns fire in a rotating pattern: upper-left, lower-right, upper-right, lower-left
     const order = [0, 3, 1, 2], gun = order[this.gun++ % 4];
     if (this.bolts.length >= MAX_BOLTS) this.bolts.shift();
-    this.bolts.push({ from: this.muzzle(gun, new THREE.Vector3()), node: i, point, travelled: 0, ctrl, landed: false, fade: 0 });
+    if (this.opts.multiplayer) {
+      const sequence = ++this.fireSequence;
+      this.bolts.push({ from: this.muzzle(gun, new THREE.Vector3()), node: -1, point, travelled: 0, ctrl: false, landed: false, fade: 0, sequence });
+      this.host.onFire(sequence, gun, point.toArray() as [number, number, number]);
+    } else {
+      const i = this.host.pickAt(this.aimX, this.aimY, FIRE_SLACK);
+      this.bolts.push({ from: this.muzzle(gun, new THREE.Vector3()), node: i, point, travelled: 0, ctrl, landed: false, fade: 0 });
+    }
     this.audio.laser(gun);
   }
 

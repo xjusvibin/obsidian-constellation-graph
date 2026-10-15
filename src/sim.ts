@@ -10,6 +10,11 @@ interface SimLink { source: string | SimNode; target: string | SimNode }
 const COLLAPSE = 1.5; // seconds spent crushing everything toward one point
 const SETTLE_MAX = 4.6; // seconds allowed for the layout to find its new resting shape
 
+/** Apply the multiplayer-only map spread without changing the solo simulation coordinates. */
+export function mapCoordinate(value: number, origin: number, scale: number): number {
+  return origin + (value - origin) * scale;
+}
+
 function hash(n: number): number {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
@@ -51,6 +56,7 @@ export class Simulation {
   private cy = new Float64Array(1);
   private cz = new Float64Array(1);
   private cn = new Float64Array(1);
+  private origin: [number, number, number] = [0, 0, 0];
 
   constructor() {
     this.linkForce = forceLink<SimNode, SimLink>([]).id(d => d.id).distance(26).strength(0.3);
@@ -79,6 +85,16 @@ export class Simulation {
   /** Cheaper repulsion on big vaults: a wider Barnes-Hut opening angle and a shorter reach. */
   setScale(n: number): void {
     this.charge.theta(n > 6000 ? 1.4 : n > 2500 ? 1.15 : 0.9).distanceMax(n > 6000 ? 160 : n > 2500 ? 240 : 340);
+  }
+
+  setOrigin(x: number, y: number, z: number): void {
+    const next: [number, number, number] = [x, y, z];
+    const delta = next.map((v, i) => v - this.origin[i]);
+    this.origin = next;
+    for (const n of this.nodes) {
+      n.x += delta[0]; n.y += delta[1]; n.z += delta[2];
+      if (n.fx != null) n.fx += delta[0]; if (n.fy != null) n.fy += delta[1]; if (n.fz != null) n.fz += delta[2];
+    }
   }
 
   /**
@@ -212,7 +228,7 @@ export class Simulation {
         x = px / found + (hash(h) - 0.5) * 8; y = py / found + (hash(h + 9) - 0.5) * 8; z = pz / found + (hash(h + 19) - 0.5) * 8;
       } else {
         const [fx, fy, fz] = fibonacci(gi, this.groups);
-        x = fx * R + (hash(h) - 0.5) * 2 * spread; y = fy * R + (hash(h + 9) - 0.5) * 2 * spread; z = fz * R + (hash(h + 19) - 0.5) * 2 * spread;
+        x = this.origin[0] + fx * R + (hash(h) - 0.5) * 2 * spread; y = this.origin[1] + fy * R + (hash(h + 9) - 0.5) * 2 * spread; z = this.origin[2] + fz * R + (hash(h + 19) - 0.5) * 2 * spread;
       }
       return { ...r, index, gi, x, y, z, vx: 0, vy: 0, vz: 0, phase: hash(h + 33) * 6.283, speed: 0.7 + hash(h + 51) * 0.6 };
     });
@@ -282,9 +298,9 @@ export class Simulation {
         n.vz += (this.cz[gi] + this.rel[n.index * 3 + 2] - n.z) * k;
       }
       // keep clusters readable and the whole thing near the origin
-      n.vx += (this.cx[gi] - n.x) * 0.010 - n.x * 0.0007;
-      n.vy += (this.cy[gi] - n.y) * 0.010 - n.y * 0.0007;
-      n.vz += (this.cz[gi] - n.z) * 0.010 - n.z * 0.0007;
+      n.vx += (this.cx[gi] - n.x) * 0.010 - (n.x - this.origin[0]) * 0.0007;
+      n.vy += (this.cy[gi] - n.y) * 0.010 - (n.y - this.origin[1]) * 0.0007;
+      n.vz += (this.cz[gi] - n.z) * 0.010 - (n.z - this.origin[2]) * 0.0007;
       if (!g) continue;
 
       // swirl around the cluster's own axis; inner nodes move faster than outer ones
@@ -295,8 +311,9 @@ export class Simulation {
       n.vx += (tx / tl) * f; n.vy += (ty / tl) * f; n.vz += (tz / tl) * f;
 
       // clusters circle the origin as a whole
-      const rr = Math.hypot(n.x, n.z) + 1e-3, fo = (0.014 * g) / (1 + rr / 120);
-      n.vx += (-n.z / rr) * fo; n.vz += (n.x / rr) * fo;
+      const ox = n.x - this.origin[0], oz = n.z - this.origin[2];
+      const rr = Math.hypot(ox, oz) + 1e-3, fo = (0.014 * g) / (1 + rr / 120);
+      n.vx += (-oz / rr) * fo; n.vz += (ox / rr) * fo;
 
       // slow noise so neighbours slide past each other
       const dr = 0.011 * g;

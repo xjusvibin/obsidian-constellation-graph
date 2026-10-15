@@ -1,6 +1,6 @@
 {
   "name": "constellation-graph",
-  "version": "0.2.0",
+  "version": "0.3.2",
   "description": "A fluid, orbiting 3D constellation of your notes for Obsidian.",
   "main": "main.js",
   "private": true,
@@ -9,7 +9,10 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
+    "test": "node --test",
+    "check:hosted": "node dev/check-hosted-service.mjs",
     "harness": "node dev/build-harness.mjs",
+    "harness:network": "node dev/build-network-harness.mjs",
     "install-local": "node dev/install-local.mjs"
   },
   "devDependencies": {

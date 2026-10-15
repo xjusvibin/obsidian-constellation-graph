@@ -1,4 +1,7 @@
 import type { ConstellationSettings } from "./settings";
+import type { AnonymousTopology } from "./multiplayer";
+import type { FlightInput, ImpactSnapshot, Pose, ShotSnapshot } from "./multiplayer";
+import type { NavigationTarget } from "./multiplayer";
 
 export interface RawNode {
   id: string;
@@ -47,6 +50,7 @@ export interface SimNode extends RawNode {
 /** What the view needs from its host (Obsidian, or the dev harness). */
 export interface Host {
   openNote(id: string, newTab: boolean): void;
+  updateSettings?(patch: Partial<ConstellationSettings>): void;
 }
 
 export interface RendererCallbacks {
@@ -57,11 +61,17 @@ export interface RendererCallbacks {
   onActivity?(kind: "animate" | "supernova" | null, text: string): void;
   /** Pilot mode started or stopped; `text` is a message for the reader (read out by screen readers too). */
   onPilot?(active: boolean, text: string): void;
+  onAudioMute?(which: "engine" | "afterburner", muted: boolean): void;
+  onNetworkFrame?(input: FlightInput): void;
+  onNavigationTarget?(target: NavigationTarget | null): void;
+  onFastTravel?(target: NavigationTarget): void;
+  onFire?(sequence: number, gun: number, aimPoint: [number, number, number]): void;
 }
 
 /** The 3D renderer and the list-only fallback expose the same surface, so the UI never has to care which it has. */
 export interface GraphRenderer {
   readonly nodes: SimNode[];
+  readonly inMultiplayer: boolean;
   readonly selectedIndex: number;
   readonly isPaused: boolean;
   indexOf(id: string): number;
@@ -87,5 +97,17 @@ export interface GraphRenderer {
   readonly canPilot: boolean;
   readonly pilotActive: boolean;
   setPilot(on: boolean): void;
+  setWorldOrigin(slot: number): void;
+  setMultiplayer(active: boolean): void;
+  setRemoteTopology(playerId: string, topology: AnonymousTopology): void;
+  setLocalTopology(playerId: string, topology: AnonymousTopology | null): void;
+  setPlayerNames(names: Map<string, string>): void;
+  setRemotePositions(playerId: string, positions: Float32Array): void;
+  setRemoteShip(playerId: string, pose: Pose, name?: string): void;
+  setRemoteShots(shots: ShotSnapshot[], impacts: ImpactSnapshot[], localPlayerId?: string): void;
+  setAuthoritativePose(pose: Pose): void;
+  clearSelection(): void;
+  requestFastTravel(): void;
+  removeRemote(playerId: string): void;
   destroy(): void;
 }

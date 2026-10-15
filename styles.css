@@ -25,6 +25,13 @@
 
 /* labels drawn over the canvas */
 .cg-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.cg-player-indicators { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.cg-player-indicator { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; max-width: 190px; padding: 2px 7px; border: 1px solid rgba(255, 91, 103, .32); border-radius: 999px; color: #ffd7d9; background: rgba(15, 8, 13, .66); font-size: 10px; line-height: 1.25; text-shadow: 0 1px 5px #000; white-space: nowrap; }
+.cg-player-indicator[hidden] { display: none; }
+.cg-player-indicator-arrow { color: #ff626d; font-size: 13px; font-weight: 800; line-height: 1; }
+.cg-player-indicator-label { overflow: hidden; text-overflow: ellipsis; }
+.cg-player-indicator-near { padding: 1px 6px; background: rgba(15, 8, 13, .48); }
+.cg-room-active .cg-labels { visibility: hidden; }
 .cg-label {
   position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform, opacity;
   font-size: var(--cg-label-size); font-weight: 500; color: #fff; letter-spacing: 0.01em;
@@ -50,6 +57,23 @@
 
 .cg-stats { position: absolute; top: 18px; right: 14px; color: var(--cg-dim); font-size: 12px; pointer-events: none; z-index: 2; }
 .cg-motion-note { position: absolute; top: 38px; right: 14px; color: var(--cg-dim); font-size: 11px; pointer-events: none; z-index: 2; }
+.cg-multiplayer { position: absolute; top: 52px; left: 12px; z-index: 5; width: min(360px, calc(100% - 24px)); padding: 12px; border: 1px solid var(--cg-border); border-radius: 10px; background: var(--cg-panel); backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+.cg-multiplayer[hidden] { display: none; }
+.cg-multiplayer h2 { margin: 0 0 6px; font-size: 15px; }
+.cg-multiplayer-service { margin: 6px 0; color: var(--cg-dim); font-size: 11px; white-space: pre-line; overflow-wrap: anywhere; }
+.cg-multiplayer-privacy, .cg-multiplayer-status { margin: 6px 0; color: var(--cg-dim); font-size: 12px; }
+.cg-multiplayer-name { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; color: var(--cg-dim); font-size: 11px; }
+.cg-multiplayer-name input { height: 30px; padding: 0 8px; border: 1px solid var(--cg-border); border-radius: 7px; background: rgba(0,0,0,.25); color: var(--cg-ink); font: inherit; }
+.cg-multiplayer-consent { display: flex; align-items: center; gap: 7px; margin: 8px 0; font-size: 12px; }
+.cg-multiplayer-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.cg-multiplayer-actions .cg-btn { width: auto; min-width: 56px; padding: 0 8px; font-size: 11px; }
+.cg-multiplayer-code { width: 118px; height: 30px; padding: 0 8px; border: 1px solid var(--cg-border); border-radius: 7px; background: rgba(0,0,0,.25); color: var(--cg-ink); font-family: monospace; text-transform: uppercase; }
+.cg-multiplayer-players { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; padding: 0; list-style: none; }
+.cg-multiplayer-players li { min-width: 100%; display: grid; grid-template-columns: minmax(65px, 1fr) 72px auto; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid var(--cg-border); border-radius: 8px; font-size: 11px; }
+.cg-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-player-health { width: 72px; height: 8px; accent-color: #ff6c73; }
+.cg-player-state { color: var(--cg-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cg-multiplayer-status.cg-error { color: #ff927e; }
 
 /* legend */
 .cg-legend { position: absolute; left: 12px; bottom: 12px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; z-index: 3; max-height: 60%; overflow: auto; }
@@ -160,9 +184,16 @@
 .cg-contrast .cg-pilot-steer-inner, .cg-contrast .cg-pilot-steer-outer { border-color: #fff; }
 .cg-pilot-energy { position: absolute; left: 50%; bottom: 46px; width: 140px; height: 3px; transform: translateX(-50%); background: rgba(255, 255, 255, 0.14); border-radius: 2px; overflow: hidden; }
 .cg-pilot-energy-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff8a3a, #ffd37a); }
+.cg-pilot-health { position: absolute; left: 50%; bottom: 40px; width: 140px; height: 3px; transform: translateX(-50%); background: rgba(255,255,255,.14); border-radius: 2px; overflow: hidden; }
+.cg-pilot-health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff4b62, #ff9d86); }
+.cg-pilot-destroyed { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); color: #ff6b72; font: 700 17px var(--font-interface, system-ui, sans-serif); letter-spacing: .14em; text-align: center; text-shadow: 0 2px 12px #000; white-space: nowrap; pointer-events: none; }
 .cg-pilot-energy-fill.cg-low { background: #ff4b3a; }
 .cg-pilot-energy:has(.cg-low) { box-shadow: 0 0 0 1px rgba(255, 75, 58, 0.6); }
 .cg-pilot-flags { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.08em; color: var(--cg-dim); text-shadow: 0 0 4px #000; white-space: nowrap; }
+.cg-pilot-audio { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 6px; pointer-events: auto; }
+.cg-pilot-audio-btn { border: 1px solid var(--cg-border); border-radius: 7px; padding: 5px 8px; color: var(--cg-ink); background: var(--cg-panel); font: 11px var(--font-interface, system-ui, sans-serif); cursor: pointer; }
+.cg-pilot-audio-btn[aria-pressed="true"] { color: #ffd37a; border-color: #ffd37a; }
+.cg-contrast .cg-pilot-audio-btn { border-color: #fff; background: #000; color: #fff; }
 .cg-contrast .cg-pilot-flags { color: #fff; }
 
 /* Pilot mode: the controls, as key caps in a quiet glass panel */

@@ -87,6 +87,10 @@ const SECTIONS: Section[] = [
         desc: "Glowing plane outline, target brackets, impact bursts and faint shells around each group." },
       { key: "pilotSound", name: "Sound effects", control: { kind: "toggle" },
         desc: "Engine, blasters and warp, made on the fly. Nothing plays unless you are flying." },
+      { key: "pilotMuteEngine", name: "Mute engine by default", control: { kind: "toggle" },
+        desc: "The Pilot HUD also has a separate engine mute control. Blasters are unaffected." },
+      { key: "pilotMuteAfterburner", name: "Mute afterburner by default", control: { kind: "toggle" },
+        desc: "The Pilot HUD also has a separate afterburner mute control. Blasters are unaffected." },
       { key: "pilotVolume", name: "Volume", control: { kind: "slider", min: 0, max: 1, step: 0.05 } },
     ],
   },
@@ -99,6 +103,17 @@ const SECTIONS: Section[] = [
       { key: "showOrphans", name: "Show notes with no links", control: { kind: "toggle" }, rebuild: true },
       { key: "excludeFolders", name: "Excluded folders", control: { kind: "text", placeholder: "Templates, archive/old" },
         desc: "Comma-separated folder paths to leave out.", rebuild: true },
+    ],
+  },
+  {
+    heading: "Multiplayer",
+    items: [
+      { key: "multiplayerName", name: "Display name", control: { kind: "text", placeholder: "Pilot" },
+        desc: "Shown to other players in a room. Up to 24 characters." },
+      { key: "multiplayerConnectionMode", name: "Room service", control: { kind: "dropdown", options: { hosted: "Hosted rooms", custom: "Custom server" } },
+        desc: "Hosted rooms work after installing the plugin. Use a custom server only if you run your own." },
+      { key: "multiplayerCustomServerUrl", name: "Custom signaling address", control: { kind: "text", placeholder: "wss://your-server.example" },
+        desc: "Used only when Room service is set to Custom server. Local development can use ws://localhost:8787." },
     ],
   },
 ];
