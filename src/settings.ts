@@ -1,4 +1,5 @@
 import { sanitizeBindings, type Bindings } from "./keymap";
+import { sanitizeTable, type ScoreEntry } from "./arcade";
 export type MotionLevel = "off" | "calm" | "lively";
 export type PaletteName = "vibrant" | "colorblind" | "theme";
 export type GroupBy = "folder" | "tag" | "none";
@@ -38,6 +39,8 @@ export interface ConstellationSettings {
   pilotDrones: boolean;
   pilotTips: boolean;
   keyBindings: Bindings;
+  highScores: ScoreEntry[];
+  arcadeName: string;
   padSensitivity: number;
   padDeadzone: number;
   aimAssist: boolean;
@@ -90,6 +93,8 @@ export const DEFAULT_SETTINGS: ConstellationSettings = {
   pilotDrones: true,
   pilotTips: true,
   keyBindings: {},
+  highScores: [],
+  arcadeName: "",
   padSensitivity: 1,
   padDeadzone: 0.16,
   aimAssist: true,
@@ -163,6 +168,8 @@ export function sanitizeSettings(raw: unknown): ConstellationSettings {
     pilotDrones: bool(r.pilotDrones, d.pilotDrones),
     pilotTips: bool(r.pilotTips, d.pilotTips),
     keyBindings: sanitizeBindings(r.keyBindings),
+    highScores: sanitizeTable(r.highScores),
+    arcadeName: typeof r.arcadeName === "string" ? r.arcadeName.slice(0, 12) : "",
     padSensitivity: clamp(r.padSensitivity, 0.3, 3, d.padSensitivity),
     padDeadzone: clamp(r.padDeadzone, 0.05, 0.4, d.padDeadzone),
     aimAssist: bool(r.aimAssist, d.aimAssist),

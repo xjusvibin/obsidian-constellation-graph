@@ -1,4 +1,5 @@
 import type { BurstMsg, MissileMsg } from "./powerups";
+import type { ArcadeBackend } from "./arcadeScreen";
 import type { ConstellationSettings } from "./settings";
 import type { AnonymousTopology, HitMsg, Pose, ShotMsg } from "./multiplayer";
 
@@ -79,6 +80,8 @@ export interface RendererCallbacks {
   onNetworkGrab?(pickup: number): void;
   /** The pilot changed the volume with the keys; save it. */
   onVolume?(volume: number): void;
+  /** The arcade high-score table and the public board. */
+  arcade?: ArcadeBackend;
   /** The first-flight tips were finished. */
   onTipsDone?(): void;
   /** The scoreboard key went down (true) or up (false). */

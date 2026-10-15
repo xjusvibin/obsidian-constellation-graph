@@ -250,6 +250,7 @@ export class ConstellationRenderer implements GraphRenderer {
       onState: (active, text) => this.onPilotState(active, text),
       leave: () => this.setPilot(false),
       setVolume: v => this.cb.onVolume?.(v),
+      arcade: this.cb.arcade,
       tipsDone: () => this.cb.onTipsDone?.(),
       onNetworkPose: pose => this.cb.onNetworkPose?.(pose),
       onNetworkShot: shot => this.cb.onNetworkShot?.(shot),

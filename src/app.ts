@@ -8,6 +8,7 @@ import { FallbackRenderer } from "./fallback";
 import type { GraphData, GraphRenderer, Host, RendererCallbacks } from "./types";
 import { ConstellationSettings, effectiveHighContrast, effectiveMotion, prefersReducedMotion } from "./settings";
 import { formatDiagnostics, relayLabel, routeLabel } from "./diagnostics";
+import { sanitizeTable, submitScore, watchScores } from "./arcade";
 
 let instances = 0;
 
@@ -98,6 +99,14 @@ export class ConstellationApp {
       onOpen: (i, t) => this.openIndex(i, t),
       onActivity: (k, text) => this.onActivity(k, text),
       onPilot: (a, text) => this.onPilot(a, text),
+      arcade: {
+        table: () => sanitizeTable(this.settings.highScores),
+        lastName: () => this.settings.arcadeName,
+        save: (table, name) => { this.settings = { ...this.settings, highScores: table, arcadeName: name }; this.host.updateSettings?.({ highScores: table, arcadeName: name }); },
+        online: () => !!this.host.post,
+        submit: entry => this.host.post ? submitScore(this.settings.multiplayerRelayUrl, this.host.post.bind(this.host), entry) : Promise.reject(new Error("Network access is not available here.")),
+        watch: (onRows, onProblem) => watchScores(this.settings.multiplayerRelayUrl, onRows, onProblem),
+      },
       onTipsDone: () => { this.settings = { ...this.settings, pilotTips: false }; this.host.updateSettings?.({ pilotTips: false }); },
       onVolume: v => { this.settings = { ...this.settings, pilotVolume: v }; this.host.updateSettings?.({ pilotVolume: v }); },
       onNetworkPose: pose => this.session.sendPose(pose),

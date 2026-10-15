@@ -9,6 +9,8 @@ import { MISSILES_MAX, type PickupKind } from "./powerups";
 import { chooseSpawn } from "./spawn";
 import { DroneField } from "./drones";
 import { Tutorial } from "./tutorial";
+import { RUN_SECONDS, runScore } from "./arcade";
+import { ArcadeScreen, type ArcadeBackend } from "./arcadeScreen";
 import { buildTranslator, keyLabel, translateCode, type Bindings, type Translator } from "./keymap";
 import { assistFactor, padName, pickPad, readPad, type PadInput } from "./gamepad";
 import { AMMO_MAX, BLASTER, BOLT_REACH, CANNON, CANNON_GAP, FIRE_GAP, HEAT_COOL, HEAT_PER_SHOT, HEAT_RESET, HULL_MAX, SHIELD_DELAY, SHIELD_MAX, SHIELD_REGEN, damageAt, hitRadius, inSweetSpot, interceptPoint, weaponStats } from "./weapons";
@@ -45,6 +47,8 @@ export interface PilotHost {
   onState(active: boolean, text: string): void;
   /** The reader pressed Esc with the mouse already free: leave Pilot mode. */
   leave(): void;
+  /** The arcade run's high-score table and the public board (absent in the browser preview). */
+  arcade?: ArcadeBackend;
   /** The volume was changed with the keys (0 to 1); remember it. */
   setVolume(volume: number): void;
   /** The first-flight tips were finished: stop showing them. */
@@ -162,7 +166,7 @@ const Z_AXIS = new THREE.Vector3(0, 0, 1);
 /** Keys the pilot owns. Anything else (Enter, /, ?, L, ...) is left to the normal keyboard handling. */
 const OWNED = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyC", "KeyQ", "KeyE", "ShiftLeft", "ShiftRight",
-  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "KeyM", "Tab", "Minus", "Equal", "NumpadSubtract", "NumpadAdd",
+  "KeyX", "KeyF", "KeyT", "KeyG", "KeyH", "KeyV", "KeyK", "KeyB", "KeyR", "KeyN", "KeyM", "Tab", "Minus", "Equal", "NumpadSubtract", "NumpadAdd", "Enter",
 ]);
 
 type KeyRow = { caps: string[]; label: string | ((p: PilotController) => string); codes: (string | null)[] };
@@ -190,6 +194,7 @@ const KEY_GROUPS: { title: string; rows: KeyRow[] }[] = [
     { caps: ["N"], label: "Watch other pilots", codes: ["KeyN"] },
     { caps: ["Tab"], label: p => p.multiplayer ? "Scoreboard (hold)" : "Scoreboard (in a room)", codes: ["Tab"] },
     { caps: ["-", "="], label: "Volume down / up", codes: ["Minus", "Equal"] },
+    { caps: ["Enter"], label: p => p.multiplayer ? "Arcade run (flying alone)" : "Start a timed arcade run", codes: ["Enter"] },
     { caps: ["K"], label: "Show / hide this", codes: ["KeyK"] },
     { caps: ["Esc"], label: p => p.cursorMode ? "Leave" : "Free the mouse", codes: [null] },
     { caps: ["P"], label: "Leave Pilot mode", codes: [null] },
@@ -301,6 +306,9 @@ export class PilotController {
   private drones: DroneField;                // practice targets when flying alone
   private droneChip: HTMLDivElement;
   private tipChip: HTMLDivElement;
+  private arcade: ArcadeScreen;
+  private runLeft = 0;                          // seconds left in a timed arcade run (0 when there is none)
+  private runActive = false;
   private tutorial: Tutorial | null = null;
   private translator: Translator = buildTranslator({});
   private capDefs: { el: HTMLElement; code: string; fallback: string }[] = [];
@@ -396,6 +404,7 @@ export class PilotController {
     this.droneChip = this.hud.createDiv({ cls: "cg-pilot-drones cg-hidden" });
     this.tipChip = this.hud.createDiv({ cls: "cg-pilot-tip cg-hidden", attr: { role: "status" } });
     this.drones = new DroneField(this.scene);
+    this.arcade = new ArcadeScreen(this.hud, host.arcade, { again: () => this.startRun(), close: () => this.closeArcade() });
     this.ringOuter = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-outer" });
     this.ringInner = this.hud.createDiv({ cls: "cg-pilot-steer cg-pilot-steer-inner" });
     this.cross = this.hud.createDiv({ cls: "cg-pilot-cross" });
@@ -620,6 +629,7 @@ export class PilotController {
     this.audio.stop();
     this.drones.stop(); this.droneChip.classList.add("cg-hidden");
     window.clearTimeout(this.tipTimer); this.tutorial = null; this.tipChip.classList.add("cg-hidden");
+    this.arcade.hide(); this.runActive = false; this.runLeft = 0;
     this.keys.clear(); this.firing = false; this.warp = null; this.bolts.length = 0;
     for (const list of this.keyCaps.values()) for (const el of list) el.classList.remove("cg-down");
     for (const b of this.bursts) b.line.visible = false;
@@ -724,6 +734,10 @@ export class PilotController {
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return; // Obsidian's shortcuts keep working
+    if (this.arcade.visible) { // the high-score screen is up: typing goes to it, and Escape closes it
+      if (e.code === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); this.arcade.hide(); this.closeArcade(); }
+      return;
+    }
     if (e.code === "Escape") {
       // the first Esc is taken by the browser to release the mouse; if one reaches us the mouse is already free, so leave
       if (this.locked) { document.exitPointerLock(); }
@@ -740,6 +754,7 @@ export class PilotController {
     this.lightKey(code, true);
     switch (code) {
       case "KeyK": this.showKeys(!this.keysShown); break;
+      case "Enter": this.startRun(); break;
       case "Minus": case "NumpadSubtract": this.changeVolume(-0.1); break;
       case "Equal": case "NumpadAdd": this.changeVolume(0.1); break;
       case "KeyT": this.toggleLock(); break;
@@ -778,9 +793,43 @@ export class PilotController {
     this.tutorial.start();
   }
 
+  /** Waves cleared so far in this run: every wave before the one in play, plus the current one if all of it is down. */
+  private runWaves(): number { const d = this.drones.info; return d.total === 0 ? 0 : d.alive === 0 ? d.wave : d.wave - 1; }
+  private runPoints(): number { return runScore(this.runWaves(), this.drones.info.kills); }
+
+  /** Enter (or Play again): start a timed three-minute run against the drones, from wave one. */
+  private startRun(): void {
+    if (this.opts.multiplayer) { this.host.onState(true, "The arcade run is for flying alone"); return; }
+    if (!this.opts.drones) { this.host.onState(true, "Turn on practice drones in the settings to play the arcade run"); return; }
+    const b = this.host.bounds();
+    this.drones.start([b.cx, b.cy, b.cz], b.radius, this.cruise);
+    this.runLeft = RUN_SECONDS; this.runActive = true; this.arcade.hide();
+    this.showDrones(true);
+    this.host.onState(true, "Arcade run: three minutes. Clear as many waves as you can");
+  }
+
+  private endRun(): void {
+    const result = { waves: this.runWaves(), kills: this.drones.info.kills };
+    this.runActive = false; this.runLeft = 0;
+    this.drones.stop(); this.droneChip.classList.add("cg-hidden"); this.droneText = "";
+    this.keys.clear(); this.firing = false;
+    if (this.locked) document.exitPointerLock();
+    this.host.onState(true, `Time. Game over: ${result.waves} waves cleared`);
+    this.arcade.show(result);
+  }
+
+  /** The high-score screen was closed: back to free practice with a fresh wave one, and take the mouse again. */
+  private closeArcade(): void {
+    if (!this.active) return;
+    if (this.opts.drones && !this.opts.multiplayer) { const b = this.host.bounds(); this.drones.start([b.cx, b.cy, b.cz], b.radius, this.cruise); this.showDrones(true); }
+    this.container.focus({ preventScroll: true }); this.requestLock();
+  }
+
   /** The practice-drone readout at the top of the view: the wave, how many are left, and your total. */
   private showDrones(force = false): void {
-    const d = this.drones.info, text = d.total ? (d.alive ? `Wave ${d.wave}: ${d.alive} of ${d.total} drones left` : `Wave ${d.wave} cleared`) + ` · ${d.kills} down` : "";
+    const d = this.drones.info;
+    let text = d.total ? (d.alive ? `Wave ${d.wave}: ${d.alive} of ${d.total} drones left` : `Wave ${d.wave} cleared`) + ` · ${d.kills} down` : "";
+    if (this.runActive) { const s = Math.max(0, Math.ceil(this.runLeft)); text = `ARCADE ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · SCORE ${this.runPoints()} · ${text}`; }
     if (force || text !== this.droneText) { this.droneText = text; this.droneChip.textContent = text; this.droneChip.classList.toggle("cg-hidden", !text); }
   }
 
@@ -797,6 +846,7 @@ export class PilotController {
   private switchView(): void { this.opts = { ...this.opts, view: this.chase ? "cockpit" : "chase" }; this.applyLook(); this.host.onState(true, this.chase ? "Chase view" : "Cockpit view"); }
 
   private onKeyUp = (e: KeyboardEvent) => {
+    if (this.arcade.visible) return;
     const code = translateCode(this.translator, e.code); if (code === null) return;
     this.keys.delete(code); this.lightKey(code, false); if (code === "Tab") this.host.showScores(false);
   };
@@ -987,6 +1037,7 @@ export class PilotController {
       if (this.boosting) this.tutorial.note("boost");
     }
     this.updateBolts(dt);
+    if (this.runActive) { this.runLeft -= dt; if (this.runLeft <= 0) this.endRun(); }
     if (this.drones.active) {
       if (this.drones.update(dt, this.clock)) { this.showDrones(true); this.host.onState(true, `Wave ${this.drones.info.wave}: ${this.drones.info.total} drones`); }
       else if (this.frame % 8 === 0) this.showDrones();

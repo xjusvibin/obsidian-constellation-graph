@@ -24,4 +24,7 @@ Object.assign(HTMLElement.prototype, {
   createSpan(this: HTMLElement, o?: Info | string) { const e = make("span", o); this.appendChild(e); return e; },
   setCssProps(this: HTMLElement, props: Record<string, string>) { for (const [k, v] of Object.entries(props)) this.style.setProperty(k, v); },
   toggleClass(this: HTMLElement, cls: string, on: boolean) { this.classList.toggle(cls, on); },
+  empty(this: HTMLElement) { this.replaceChildren(); },
+  setText(this: HTMLElement, text: string) { this.textContent = text; },
+  addClass(this: HTMLElement, cls: string) { this.classList.add(cls); },
 });
